@@ -73,9 +73,17 @@ export function createOmniTriageServer() {
       return;
     }
 
-    // 5. Static File Server for Dashboard
-    let filePath = path.join(__dirname, '../../dashboard', url.pathname === '/' ? 'index.html' : url.pathname);
-    if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+    // 5. Static File Server for Dashboard / PWA
+    const relFile = url.pathname === '/' ? 'index.html' : url.pathname.replace(/^\//, '');
+    const possiblePaths = [
+      path.resolve(process.cwd(), 'dashboard', relFile),
+      path.resolve(__dirname, '../../../dashboard', relFile),
+      path.resolve(__dirname, '../../dashboard', relFile)
+    ];
+
+    let filePath = possiblePaths.find(p => fs.existsSync(p) && fs.statSync(p).isFile());
+
+    if (filePath) {
       const ext = path.extname(filePath);
       let contentType = 'text/html';
       if (ext === '.css') contentType = 'text/css';
@@ -89,7 +97,7 @@ export function createOmniTriageServer() {
     }
 
     res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'Endpoint or file not found' }));
+    res.end(JSON.stringify({ error: 'Endpoint or file not found', requested: url.pathname }));
   });
 }
 
@@ -102,7 +110,6 @@ function tryListen(port: number) {
   });
   srv.on('error', (err: any) => {
     if (err.code === 'EADDRINUSE') {
-      console.log(`Port ${port} in use, trying port ${port + 1}...`);
       tryListen(port + 1);
     } else {
       console.error(err);
