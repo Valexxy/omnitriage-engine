@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>OmniTriage | Clinical Multi-Biomarker Scanner</title>
+  
+  <!-- PWA & Mobile App Meta Tags -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0a0e17">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="OmniTriage">
+  <link rel="apple-touch-icon" href="icon-192.svg">
+  
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="header">
+    <div class="brand">
+      <span class="logo-badge">OMNITRIAGE</span>
+      <div class="title-group">
+        <h1>Clinical Multi-Biomarker Engine</h1>
+        <p>Software as a Medical Device (SaMD) | HL7 FHIR v4 | WHO IMCI | NEWS2</p>
+      </div>
+    </div>
+    <div class="header-status">
+      <button id="btn-install-pwa" style="background: linear-gradient(135deg, #00e676, #00f2fe); color: #000; font-size: 11px; padding: 6px 12px; display: none;">
+        INSTALL APP
+      </button>
+      <span class="badge badge-green">* OFFLINE ACTIVE</span>
+      <span class="badge">ISO 80601-2-61</span>
+    </div>
+  </header>
+
+  <main class="grid-container">
+    <!-- Left Column: Real-Time Scanner & Oscilloscopes -->
+    <section>
+      <div class="card">
+        <div class="card-title">
+          <span>Real-Time Clinical Biometrics</span>
+          <span id="timestamp-display" style="font-family: monospace; font-size: 11px;">LIVE SENSOR STREAM</span>
+        </div>
+        
+        <div class="vitals-grid">
+          <div class="vital-box">
+            <div class="vital-label">Heart Rate</div>
+            <div class="vital-value" id="val-hr">72</div>
+            <div class="vital-unit">BPM (LOINC 8867-4)</div>
+          </div>
+          <div class="vital-box">
+            <div class="vital-label">HRV (RMSSD)</div>
+            <div class="vital-value" id="val-hrv">48.2</div>
+            <div class="vital-unit">ms (Vagal Tone)</div>
+          </div>
+          <div class="vital-box">
+            <div class="vital-label">Vascular Age</div>
+            <div class="vital-value" id="val-vasc">32</div>
+            <div class="vital-unit">Years (APG b/a)</div>
+          </div>
+          <div class="vital-box">
+            <div class="vital-label">Hemoglobin (Hb)</div>
+            <div class="vital-value" id="val-hb">14.2</div>
+            <div class="vital-unit">g/dL (Erythema)</div>
+          </div>
+        </div>
+
+        <!-- Real-time Oscilloscope Canvas -->
+        <div class="card-title">
+          <span>Photoplethysmogram (PPG) Oscilloscope</span>
+          <span style="color: #00f2fe; font-size: 11px;">30 FPS | 4th Order Butterworth</span>
+        </div>
+        <div class="canvas-container">
+          <canvas id="ppg-canvas"></canvas>
+        </div>
+
+        <!-- APG 2nd Derivative Oscilloscope -->
+        <div class="card-title">
+          <span>Acceleration Plethysmogram (APG d2x/dt2)</span>
+          <span style="color: #4facfe; font-size: 11px;">Arterial Reflection Fiducials (a,b,c,d,e)</span>
+        </div>
+        <div class="canvas-container" style="height: 120px;">
+          <canvas id="apg-canvas"></canvas>
+        </div>
+
+        <div style="margin-top: 12px;">
+          <div style="display: flex; justify-content: space-between; font-size: 12px;">
+            <span>Signal Quality Index (SQI): <strong id="sqi-score" style="color: #00e676;">94.8%</strong></span>
+            <span id="sqi-status" style="color: #00e676;">CLINICAL GRADE (Valid)</span>
+          </div>
+          <div class="sqi-meter-bar">
+            <div class="sqi-progress" id="sqi-progress"></div>
+          </div>
+        </div>
+
+        <div class="btn-group">
+          <button id="btn-camera-scan">START CAMERA SCAN</button>
+          <button id="btn-scan">SIMULATE 60s SCAN</button>
+          <button class="secondary" id="btn-simulate-collapse">SIMULATE SEVERE DECOMPENSATION</button>
+          <button class="secondary" id="btn-reset">RESET</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Column: Clinical Decision Support & FHIR -->
+    <section>
+      <div class="card">
+        <div class="card-title">Clinical Decision Support (CDSS)</div>
+        
+        <div class="triage-alert-box" id="triage-card">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <div style="font-size: 11px; text-transform: uppercase; color: #8b9bb4;">NEWS2 Early Warning</div>
+              <div class="triage-score-large" id="news2-score">0</div>
+            </div>
+            <div class="badge badge-green" id="news2-badge">LOW RISK</div>
+          </div>
+          <p id="news2-action" style="font-size: 12px; margin-top: 8px; color: #f0f4f8;">
+            Routine clinical monitoring. Patient physiologically stable.
+          </p>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+          <div class="vital-box" style="text-align: left;">
+            <div class="vital-label">qSOFA Sepsis Score</div>
+            <div style="font-size: 20px; font-weight: 800; color: #00e676;" id="qsofa-val">0 / 3</div>
+            <div class="vital-unit" id="qsofa-text">Low Sepsis Risk</div>
+          </div>
+          <div class="vital-box" style="text-align: left;">
+            <div class="vital-label">4-6h Early Warning</div>
+            <div style="font-size: 20px; font-weight: 800; color: #00e676;" id="decomp-val">92%</div>
+            <div class="vital-unit" id="decomp-text">High Resilience</div>
+          </div>
+        </div>
+
+        <div style="background: #0a0e17; border: 1px solid #232f48; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+          <div style="font-size: 11px; color: #8b9bb4; text-transform: uppercase; margin-bottom: 4px;">WHO IMCI Pediatric Triage</div>
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 13px; font-weight: 700; color: #00e676;" id="imci-band">GREEN (No Danger Signs)</span>
+            <span style="font-size: 11px; color: #8b9bb4;">Age 2mo - 5yr</span>
+          </div>
+        </div>
+
+        <div class="card-title">
+          <span>HL7 FHIR v4 Export</span>
+          <button class="secondary" style="padding: 4px 8px; font-size: 10px;" id="btn-copy-fhir">COPY JSON</button>
+        </div>
+        <pre id="fhir-output">{
+  "resourceType": "Bundle",
+  "type": "collection",
+  "status": "final",
+  "observations": 5
+}</pre>
+      </div>
+    </section>
+  </main>
+
+  <script src="sensor-bridge.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

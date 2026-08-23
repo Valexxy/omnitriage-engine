@@ -1,26 +1,5 @@
 {
-  "version": 2,
-  "cleanUrls": true,
-  "routes": [
-    {
-      "src": "/api/triage",
-      "dest": "/api/triage.ts"
-    },
-    {
-      "src": "/api/environment",
-      "dest": "/api/environment.ts"
-    },
-    {
-      "src": "/api/medication-check",
-      "dest": "/api/medication-check.ts"
-    },
-    {
-      "src": "/api/who-baseline",
-      "dest": "/api/who-baseline.ts"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/public/"
-    }
-  ]
+  "buildCommand": "npm run build",
+  "outputDirectory": "public",
+  "cleanUrls": true
 }
