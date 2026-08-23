@@ -9,6 +9,8 @@ import { WHOIMCITriage, WHOIMCIResult } from '../triage/who-imci';
 import { PredictiveDecompensation, PredictiveDecompensationResult } from '../triage/predictive-decompensation';
 import { FHIRBundleBuilder } from '../fhir/fhir-bundle-builder';
 import { FHIRBundle } from '../fhir/fhir-types';
+import { NeuralTriageAI, NeuralInferenceResult } from '../ai/neural-triage-ai';
+import { ClinicalLLMReasoner, ClinicalReasoningOutput } from '../ai/clinical-llm-reasoner';
 
 export interface ComprehensivePatientInput {
   patientId: string;
@@ -36,6 +38,8 @@ export interface ComprehensiveTriageReport {
   qsofa: qSOFAResult;
   whoImci?: WHOIMCIResult;
   predictiveDecompensation: PredictiveDecompensationResult;
+  aiNeuralInference: NeuralInferenceResult;
+  aiClinicalReasoning: ClinicalReasoningOutput;
   fhirBundle: FHIRBundle;
 }
 
@@ -98,6 +102,27 @@ export class OmniTriageController {
       sqiScore: ppg.sqi.overallScore
     });
 
+    // On-Device Neural Network Inference
+    const aiNeuralInference = NeuralTriageAI.predict({
+      normalizedHeartRate: ((ppg.heartRateBpm || 75) - 60) / 100,
+      normalizedRmssd: ppg.hrv.rmssdMs / 100,
+      normalizedVascularRatio: (vascular.bOverARatio + 1.0) / 2.0,
+      normalizedRespiratoryRate: (acoustics.respiratoryRateBpm - 12) / 30,
+      normalizedHemoglobin: (anemia.estimatedHbGPerDl - 6) / 12,
+      acousticWheezeEnergy: acoustics.wheezeSpectralPowerRatio
+    });
+
+    // Clinical LLM Reasoner
+    const aiClinicalReasoning = ClinicalLLMReasoner.generateReasoning({
+      heartRateBpm: ppg.heartRateBpm || 75,
+      rmssdMs: ppg.hrv.rmssdMs,
+      respiratoryRateBpm: acoustics.respiratoryRateBpm,
+      anemiaSeverity: anemia.severity,
+      news2Score: news2.totalScore,
+      qsofaScore: qsofa.score,
+      decompensationRiskPercent: predictiveDecompensation.decompensationRiskScore
+    });
+
     const fhirBundle = FHIRBundleBuilder.buildBundle({
       patientId: input.patientId,
       heartRateBpm: ppg.heartRateBpm || 75,
@@ -122,6 +147,8 @@ export class OmniTriageController {
       qsofa,
       whoImci,
       predictiveDecompensation,
+      aiNeuralInference,
+      aiClinicalReasoning,
       fhirBundle
     };
   }

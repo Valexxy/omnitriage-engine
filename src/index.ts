@@ -10,6 +10,9 @@ export * from './triage/qsofa-sepsis';
 export * from './triage/who-imci';
 export * from './triage/predictive-decompensation';
 
+export * from './ai/neural-triage-ai';
+export * from './ai/clinical-llm-reasoner';
+
 export * from './fhir/fhir-types';
 export * from './fhir/medical-ontologies';
 export * from './fhir/fhir-bundle-builder';
@@ -17,5 +20,6 @@ export * from './fhir/fhir-bundle-builder';
 export * from './api/openaq-service';
 export * from './api/openfda-service';
 export * from './api/who-gho-service';
+export * from './api/hapi-fhir-client';
 
 export * from './core/omni-triage-controller';
