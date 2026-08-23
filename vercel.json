@@ -1,0 +1,27 @@
+{
+  "version": 2,
+  "public": true,
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/api/triage",
+      "destination": "/api/triage"
+    },
+    {
+      "source": "/api/environment",
+      "destination": "/api/environment"
+    },
+    {
+      "source": "/api/medication-check",
+      "destination": "/api/medication-check"
+    },
+    {
+      "source": "/api/who-baseline",
+      "destination": "/api/who-baseline"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/dashboard/$1"
+    }
+  ]
+}
