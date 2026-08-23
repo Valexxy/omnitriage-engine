@@ -1,0 +1,11 @@
+version: '3.8'
+services:
+  omnitriage:
+    build: .
+    container_name: omnitriage-engine
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    environment:
+      - PORT=3000
+      - NODE_ENV=production

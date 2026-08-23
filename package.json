@@ -1,0 +1,33 @@
+{
+  "name": "omnitriage-engine",
+  "version": "1.0.0",
+  "description": "World-first zero-hardware multi-biomarker clinical triage engine compliant with HL7 FHIR, LOINC, WHO IMCI, NEWS2, and qSOFA",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test dist/tests/*.test.js",
+    "test:ts": "tsc && node --test dist/tests/*.test.js",
+    "start": "node dist/src/server/server.js",
+    "demo": "node dist/src/demo.js"
+  },
+  "keywords": [
+    "digital-health",
+    "samd",
+    "ppg",
+    "apg",
+    "biomarkers",
+    "fhir",
+    "loinc",
+    "triage",
+    "news2",
+    "qsofa",
+    "who-imci"
+  ],
+  "author": "OmniTriage Health Initiative",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "typescript": "^5.9.3"
+  }
+}
