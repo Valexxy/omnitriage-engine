@@ -1,26 +1,26 @@
 {
   "version": 2,
   "cleanUrls": true,
-  "rewrites": [
+  "routes": [
     {
-      "source": "/api/triage",
-      "destination": "/api/triage"
+      "src": "/api/triage",
+      "dest": "/api/triage.ts"
     },
     {
-      "source": "/api/environment",
-      "destination": "/api/environment"
+      "src": "/api/environment",
+      "dest": "/api/environment.ts"
     },
     {
-      "source": "/api/medication-check",
-      "destination": "/api/medication-check"
+      "src": "/api/medication-check",
+      "dest": "/api/medication-check.ts"
     },
     {
-      "source": "/api/who-baseline",
-      "destination": "/api/who-baseline"
+      "src": "/api/who-baseline",
+      "dest": "/api/who-baseline.ts"
     },
     {
-      "source": "/(.*)",
-      "destination": "/dashboard/$1"
+      "src": "/(.*)",
+      "dest": "/public/"
     }
   ]
 }
