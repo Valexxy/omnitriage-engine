@@ -5,11 +5,12 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-public.js",
     "test": "node --test dist/tests/*.test.js",
     "test:ts": "tsc && node --test dist/tests/*.test.js",
     "start": "node dist/src/server/server.js",
-    "demo": "node dist/src/demo.js"
+    "demo": "node dist/src/demo.js",
+    "vercel-build": "tsc && node scripts/copy-public.js"
   },
   "keywords": [
     "digital-health",
