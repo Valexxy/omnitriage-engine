@@ -1,5 +1,37 @@
+// Register Service Worker for Offline PWA Installation
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => console.log('[PWA] Service Worker registered with scope:', reg.scope))
+      .catch(err => console.warn('[PWA] Service Worker registration failed:', err));
+  });
+}
+
+// PWA Native Installation Handler
+let deferredInstallPrompt = null;
+const installBtn = document.getElementById('btn-install-pwa');
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  installBtn.style.display = 'inline-block';
+});
+
+installBtn.addEventListener('click', async () => {
+  if (deferredInstallPrompt) {
+    deferredInstallPrompt.prompt();
+    const { outcome } = await deferredInstallPrompt.userChoice;
+    console.log('[PWA] User response to install prompt:', outcome);
+    deferredInstallPrompt = null;
+    installBtn.style.display = 'none';
+  } else {
+    alert('To install on iPhone/iPad: Tap the Share button in Safari, then select "Add to Home Screen".\n\nOn Android/Desktop: Click the install icon in your browser address bar.');
+  }
+});
+
 let isScanning = false;
 let isDecompensated = false;
+let isLiveCamera = false;
 let frame = 0;
 
 const ppgCanvas = document.getElementById('ppg-canvas');
@@ -19,6 +51,9 @@ setTimeout(resizeCanvases, 100);
 const ppgBuffer = new Array(200).fill(120);
 const apgBuffer = new Array(200).fill(0);
 
+// Sensor bridge instance
+const sensorBridge = new window.SmartphoneSensorBridge();
+
 function generateSimulatedSample(t, decompensated) {
   const hr = decompensated ? 132 : 72;
   const freq = hr / 60;
@@ -30,16 +65,19 @@ function generateSimulatedSample(t, decompensated) {
 
 function updateWaveforms() {
   frame++;
-  const t = frame / 30;
-  const val = generateSimulatedSample(t, isDecompensated);
-  ppgBuffer.push(val);
-  ppgBuffer.shift();
+  if (!isLiveCamera) {
+    const t = frame / 30;
+    const val = generateSimulatedSample(t, isDecompensated);
+    ppgBuffer.push(val);
+    ppgBuffer.shift();
+  }
 
   const n = ppgBuffer.length;
   const apgVal = (ppgBuffer[n - 1] - 2 * ppgBuffer[n - 2] + ppgBuffer[n - 3]) * 15;
   apgBuffer.push(apgVal);
   apgBuffer.shift();
 
+  // Draw PPG
   ppgCtx.fillStyle = '#05080e';
   ppgCtx.fillRect(0, 0, ppgCanvas.width, ppgCanvas.height);
   
@@ -63,6 +101,7 @@ function updateWaveforms() {
   }
   ppgCtx.stroke();
 
+  // Draw APG
   apgCtx.fillStyle = '#05080e';
   apgCtx.fillRect(0, 0, apgCanvas.width, apgCanvas.height);
   apgCtx.strokeStyle = '#4facfe';
@@ -150,6 +189,35 @@ function updateUI() {
   };
   fhirOut.innerText = JSON.stringify(fhirPayload, null, 2);
 }
+
+// Live Camera PPG Handler
+document.getElementById('btn-camera-scan').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-camera-scan');
+  if (!isLiveCamera) {
+    btn.innerText = 'STARTING CAMERA...';
+    const res = await sensorBridge.startCamera((frameData) => {
+      const intensity = frameData.r;
+      ppgBuffer.push(intensity);
+      ppgBuffer.shift();
+    });
+
+    if (res.success) {
+      isLiveCamera = true;
+      btn.innerText = 'STOP CAMERA SCAN';
+      btn.style.background = '#ff1744';
+      document.getElementById('timestamp-display').innerText = 'LIVE CAMERA FEED (FINGERTIP PPG)';
+    } else {
+      btn.innerText = 'START CAMERA SCAN';
+      alert('Camera access notice: ' + res.error + '\nRunning precision clinical simulation instead.');
+    }
+  } else {
+    sensorBridge.stopAll();
+    isLiveCamera = false;
+    btn.innerText = 'START CAMERA SCAN';
+    btn.style.background = '';
+    document.getElementById('timestamp-display').innerText = 'STANDBY';
+  }
+});
 
 document.getElementById('btn-scan').addEventListener('click', () => {
   isDecompensated = false;
