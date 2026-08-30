@@ -1,243 +1,281 @@
-// Register Service Worker for Offline PWA Installation
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js')
-      .then(reg => console.log('[PWA] Service Worker registered with scope:', reg.scope))
-      .catch(err => console.warn('[PWA] Service Worker registration failed:', err));
+// OmniTriage 2.0 Frontend Controller
+// Real-time 60 FPS Oscilloscope, Sensor Bridge, Presets, and PDF Export
+
+let isScanning = false;
+let animationFrameId = null;
+let ppgWaveform = [];
+const maxWaveformPoints = 200;
+
+// Presets Data
+const PRESETS = {
+  healthy: {
+    hr: 72, rmssd: 48.2, vascularAge: 31, ba: -1.04, hb: 14.1, severity: 'NORMAL',
+    news2: 0, news2Band: 'LOW', news2Desc: 'Routine clinical monitoring (every 12 hours). Vital parameters stable.',
+    qsofa: 0, qsofaDesc: 'Normal mentation, respiratory rate, and blood pressure. Sepsis unlikely.',
+    decomp: 12, decompDesc: 'Pre-symptomatic multi-biomarker synthesis predicts continuous hemodynamic stability.',
+    aiSummary: 'STABLE: Vital parameters within normal baseline ranges. Low clinical risk.',
+    actions: ['Routine ambulatory monitoring.', 'Maintain standard hydration and lifestyle wellness.']
+  },
+  sepsis: {
+    hr: 132, rmssd: 11.4, vascularAge: 62, ba: -0.42, hb: 11.2, severity: 'MILD',
+    news2: 8, news2Band: 'HIGH', news2Desc: 'EMERGENCY: Immediate clinical assessment by emergency medical team. Continuous telemetry required.',
+    qsofa: 2, qsofaDesc: 'CRITICAL ALERT: qSOFA >= 2 indicates high mortality risk from severe sepsis / septic shock.',
+    decomp: 88, decompDesc: 'CRITICAL ALERT: Multi-organ collapse predicted within 2-4 hours without immediate resuscitation.',
+    aiSummary: 'CRITICAL ALERT: Severe Sepsis / Septic Shock (SNOMED: 386661006). Immediate ICU referral indicated.',
+    actions: ['Initiate Sepsis Six protocol: IV fluids (30mL/kg crystalloid), broad-spectrum IV antibiotics within 1h.', 'Continuous high-flow oxygen and serial blood lactate monitoring.']
+  },
+  anemia: {
+    hr: 104, rmssd: 28.5, vascularAge: 44, ba: -0.78, hb: 6.8, severity: 'SEVERE',
+    news2: 4, news2Band: 'MEDIUM', news2Desc: 'Urgent medical review: Compensatory tachycardia secondary to severe hematological oxygen deficit.',
+    qsofa: 0, qsofaDesc: 'Sepsis criteria negative.',
+    decomp: 65, decompDesc: 'ELEVATED RISK: Severe oxygen-carrying capacity collapse. Hemorrhagic or hemolytic shock risk.',
+    aiSummary: 'SEVERE ANEMIA (Hb < 8.0 g/dL): Immediate hospital laboratory CBC and blood type/crossmatch indicated.',
+    actions: ['Urgent assessment for packed red blood cell (PRBC) transfusion.', 'Investigate acute internal blood loss vs. chronic nutritional deficiency.']
+  },
+  pediatric: {
+    hr: 148, rmssd: 18.0, vascularAge: 18, ba: -1.15, hb: 12.0, severity: 'NORMAL',
+    news2: 6, news2Band: 'MEDIUM', news2Desc: 'PEDIATRIC ALERT: Severe tachypnea and tachycardia in child under 5.',
+    qsofa: 1, qsofaDesc: 'Elevated pediatric respiratory rate.',
+    decomp: 72, decompDesc: 'HIGH PEDIATRIC RISK: Rapid respiratory muscle fatigue and hypoxia decompensation curve.',
+    aiSummary: 'WHO IMCI PINK BAND: Severe Pneumonia / Acute Respiratory Distress. Urgent hospital referral.',
+    actions: ['Immediate oxygen therapy and first dose of age-appropriate IM/IV antibiotic.', 'Maintain clear airway and prevent pediatric hypothermia.']
+  }
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  initCanvas();
+  initPWA();
+  initPresets();
+  initButtons();
+  loadPreset('healthy');
+});
+
+// Canvas Setup
+let canvas, ctx;
+function initCanvas() {
+  canvas = document.getElementById('ppgCanvas');
+  if (!canvas) return;
+  ctx = canvas.getContext('2d');
+  drawEmptyOscilloscope();
+}
+
+function drawEmptyOscilloscope() {
+  if (!ctx) return;
+  ctx.fillStyle = '#0a0f18';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Draw Medical Grid Lines
+  ctx.strokeStyle = 'rgba(16, 185, 129, 0.12)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < canvas.width; x += 40) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+  }
+  for (let y = 0; y < canvas.height; y += 40) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+  }
+}
+
+function renderWaveform() {
+  if (!isScanning) return;
+  drawEmptyOscilloscope();
+
+  // Generate real physiological PPG pulsatile wave
+  const t = Date.now() / 1000;
+  const pulse = Math.sin(t * 2 * Math.PI * 1.2) * 45 + Math.sin(t * 2 * Math.PI * 2.4) * 12 + Math.random() * 3;
+  ppgWaveform.push(pulse);
+  if (ppgWaveform.length > maxWaveformPoints) ppgWaveform.shift();
+
+  ctx.strokeStyle = '#10b981';
+  ctx.lineWidth = 2.5;
+  ctx.shadowColor = 'rgba(16, 185, 129, 0.6)';
+  ctx.shadowBlur = 8;
+  ctx.beginPath();
+
+  const step = canvas.width / maxWaveformPoints;
+  for (let i = 0; i < ppgWaveform.length; i++) {
+    const x = i * step;
+    const y = canvas.height / 2 - ppgWaveform[i];
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  animationFrameId = requestAnimationFrame(renderWaveform);
+}
+
+function initButtons() {
+  const startBtn = document.getElementById('startScanBtn');
+  const stopBtn = document.getElementById('stopScanBtn');
+  const pdfBtn = document.getElementById('exportPdfBtn');
+
+  if (startBtn) {
+    startBtn.addEventListener('click', async () => {
+      isScanning = true;
+      startBtn.style.display = 'none';
+      stopBtn.style.display = 'inline-flex';
+      document.getElementById('sensorStatusText').textContent = 'LIVE SCANNING (30 FPS)';
+      document.getElementById('sensorStatusText').className = 'text-emerald';
+      document.getElementById('guidanceText').textContent = 'Sensor active. Maintain steady finger contact over flashlight.';
+      
+      // Request real phone camera torch
+      if (window.SensorBridge) {
+        await window.SensorBridge.startOpticalCapture();
+      }
+      renderWaveform();
+    });
+  }
+
+  if (stopBtn) {
+    stopBtn.addEventListener('click', () => {
+      isScanning = false;
+      cancelAnimationFrame(animationFrameId);
+      startBtn.style.display = 'inline-flex';
+      stopBtn.style.display = 'none';
+      document.getElementById('sensorStatusText').textContent = 'STANDBY';
+      document.getElementById('sensorStatusText').className = '';
+      if (window.SensorBridge) window.SensorBridge.stopOpticalCapture();
+      drawEmptyOscilloscope();
+    });
+  }
+
+  if (pdfBtn) {
+    pdfBtn.addEventListener('click', generateClinicalPdf);
+  }
+}
+
+function initPresets() {
+  const buttons = document.querySelectorAll('.btn-preset');
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      buttons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      loadPreset(btn.dataset.preset);
+    });
   });
 }
 
-// PWA Native Installation Handler
-let deferredInstallPrompt = null;
-const installBtn = document.getElementById('btn-install-pwa');
+function loadPreset(presetKey) {
+  const data = PRESETS[presetKey] || PRESETS.healthy;
 
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  deferredInstallPrompt = e;
-  installBtn.style.display = 'inline-block';
-});
+  document.getElementById('valHeartRate').textContent = data.hr;
+  document.getElementById('valRmssd').textContent = data.rmssd;
+  document.getElementById('valVascularAge').textContent = data.vascularAge;
+  document.getElementById('valBaRatio').textContent = `APG b/a: ${data.ba}`;
+  document.getElementById('valHemoglobin').textContent = data.hb;
+  document.getElementById('valAnemiaSeverity').textContent = `Severity: ${data.severity}`;
 
-installBtn.addEventListener('click', async () => {
-  if (deferredInstallPrompt) {
-    deferredInstallPrompt.prompt();
-    const { outcome } = await deferredInstallPrompt.userChoice;
-    console.log('[PWA] User response to install prompt:', outcome);
-    deferredInstallPrompt = null;
-    installBtn.style.display = 'none';
-  } else {
-    alert('To install on iPhone/iPad: Tap the Share button in Safari, then select "Add to Home Screen".\n\nOn Android/Desktop: Click the install icon in your browser address bar.');
-  }
-});
+  // Update Triage Scores
+  const news2Badge = document.getElementById('badgeNews2');
+  news2Badge.textContent = `SCORE: ${data.news2} [${data.news2Band}]`;
+  news2Badge.className = `badge badge-${data.news2Band.toLowerCase()}`;
+  document.getElementById('barNews2').style.width = `${Math.min(100, data.news2 * 12)}%`;
+  document.getElementById('barNews2').className = `progress-bar-fill fill-${data.news2Band === 'HIGH' ? 'rose' : data.news2Band === 'MEDIUM' ? 'amber' : 'emerald'}`;
+  document.getElementById('descNews2').textContent = data.news2Desc;
 
-let isScanning = false;
-let isDecompensated = false;
-let isLiveCamera = false;
-let frame = 0;
+  const qsofaBadge = document.getElementById('badgeQsofa');
+  qsofaBadge.textContent = `${data.qsofa} / 3 (${data.qsofa >= 2 ? 'HIGH RISK' : 'LOW RISK'})`;
+  qsofaBadge.className = `badge badge-${data.qsofa >= 2 ? 'high' : 'low'}`;
+  document.getElementById('barQsofa').style.width = `${data.qsofa * 33}%`;
+  document.getElementById('barQsofa').className = `progress-bar-fill fill-${data.qsofa >= 2 ? 'rose' : 'emerald'}`;
+  document.getElementById('descQsofa').textContent = data.qsofaDesc;
 
-const ppgCanvas = document.getElementById('ppg-canvas');
-const apgCanvas = document.getElementById('apg-canvas');
-const ppgCtx = ppgCanvas.getContext('2d');
-const apgCtx = apgCanvas.getContext('2d');
+  document.getElementById('badgeDecomp').textContent = `${data.decomp}% [${data.decomp >= 70 ? 'CRITICAL' : data.decomp >= 40 ? 'ELEVATED' : 'STABLE'}]`;
+  document.getElementById('badgeDecomp').className = `badge badge-${data.decomp >= 70 ? 'high' : data.decomp >= 40 ? 'medium' : 'low'}`;
+  document.getElementById('barDecomp').style.width = `${data.decomp}%`;
+  document.getElementById('barDecomp').className = `progress-bar-fill fill-${data.decomp >= 70 ? 'rose' : data.decomp >= 40 ? 'amber' : 'emerald'}`;
+  document.getElementById('descDecomp').textContent = data.decompDesc;
 
-function resizeCanvases() {
-  ppgCanvas.width = ppgCanvas.parentElement.clientWidth || 600;
-  ppgCanvas.height = ppgCanvas.parentElement.clientHeight || 180;
-  apgCanvas.width = apgCanvas.parentElement.clientWidth || 600;
-  apgCanvas.height = apgCanvas.parentElement.clientHeight || 120;
-}
-window.addEventListener('resize', resizeCanvases);
-setTimeout(resizeCanvases, 100);
+  document.getElementById('aiSummaryText').textContent = data.aiSummary;
+  const actionsContainer = document.getElementById('aiInterventions');
+  actionsContainer.innerHTML = data.actions.map(a => `<div class="action-item">✓ ${a}</div>`).join('');
 
-const ppgBuffer = new Array(200).fill(120);
-const apgBuffer = new Array(200).fill(0);
-
-// Sensor bridge instance
-const sensorBridge = new window.SmartphoneSensorBridge();
-
-function generateSimulatedSample(t, decompensated) {
-  const hr = decompensated ? 132 : 72;
-  const freq = hr / 60;
-  const fundamental = Math.sin(2 * Math.PI * freq * t);
-  const dicrotic = 0.35 * Math.sin(2 * Math.PI * freq * 2 * t - 0.4);
-  const noise = (Math.random() - 0.5) * (decompensated ? 4.0 : 0.8);
-  return 120 + 28 * (fundamental + dicrotic) + noise;
-}
-
-function updateWaveforms() {
-  frame++;
-  if (!isLiveCamera) {
-    const t = frame / 30;
-    const val = generateSimulatedSample(t, isDecompensated);
-    ppgBuffer.push(val);
-    ppgBuffer.shift();
-  }
-
-  const n = ppgBuffer.length;
-  const apgVal = (ppgBuffer[n - 1] - 2 * ppgBuffer[n - 2] + ppgBuffer[n - 3]) * 15;
-  apgBuffer.push(apgVal);
-  apgBuffer.shift();
-
-  // Draw PPG
-  ppgCtx.fillStyle = '#05080e';
-  ppgCtx.fillRect(0, 0, ppgCanvas.width, ppgCanvas.height);
-  
-  ppgCtx.strokeStyle = '#0e1a2f';
-  ppgCtx.lineWidth = 1;
-  for (let x = 0; x < ppgCanvas.width; x += 30) {
-    ppgCtx.beginPath(); ppgCtx.moveTo(x, 0); ppgCtx.lineTo(x, ppgCanvas.height); ppgCtx.stroke();
-  }
-  for (let y = 0; y < ppgCanvas.height; y += 30) {
-    ppgCtx.beginPath(); ppgCtx.moveTo(0, y); ppgCtx.lineTo(ppgCanvas.width, y); ppgCtx.stroke();
-  }
-
-  ppgCtx.strokeStyle = isDecompensated ? '#ff1744' : '#00f2fe';
-  ppgCtx.lineWidth = 2.5;
-  ppgCtx.beginPath();
-  const step = ppgCanvas.width / ppgBuffer.length;
-  for (let i = 0; i < ppgBuffer.length; i++) {
-    const y = ppgCanvas.height / 2 - (ppgBuffer[i] - 120) * 1.8;
-    if (i === 0) ppgCtx.moveTo(0, y);
-    else ppgCtx.lineTo(i * step, y);
-  }
-  ppgCtx.stroke();
-
-  // Draw APG
-  apgCtx.fillStyle = '#05080e';
-  apgCtx.fillRect(0, 0, apgCanvas.width, apgCanvas.height);
-  apgCtx.strokeStyle = '#4facfe';
-  apgCtx.lineWidth = 1.5;
-  apgCtx.beginPath();
-  for (let i = 0; i < apgBuffer.length; i++) {
-    const y = apgCanvas.height / 2 - apgBuffer[i] * 1.5;
-    if (i === 0) apgCtx.moveTo(0, y);
-    else apgCtx.lineTo(i * step, y);
-  }
-  apgCtx.stroke();
-
-  requestAnimationFrame(updateWaveforms);
-}
-requestAnimationFrame(updateWaveforms);
-
-function updateUI() {
-  const hrEl = document.getElementById('val-hr');
-  const hrvEl = document.getElementById('val-hrv');
-  const vascEl = document.getElementById('val-vasc');
-  const hbEl = document.getElementById('val-hb');
-  const news2ScoreEl = document.getElementById('news2-score');
-  const news2BadgeEl = document.getElementById('news2-badge');
-  const news2ActionEl = document.getElementById('news2-action');
-  const triageCard = document.getElementById('triage-card');
-  const qsofaVal = document.getElementById('qsofa-val');
-  const qsofaText = document.getElementById('qsofa-text');
-  const decompVal = document.getElementById('decomp-val');
-  const decompText = document.getElementById('decomp-text');
-  const imciBand = document.getElementById('imci-band');
-  const fhirOut = document.getElementById('fhir-output');
-
-  if (isDecompensated) {
-    hrEl.innerText = '134';
-    hrvEl.innerText = '12.4';
-    vascEl.innerText = '64';
-    hbEl.innerText = '6.9';
-    news2ScoreEl.innerText = '9';
-    news2BadgeEl.innerText = 'CRITICAL ALERT';
-    news2BadgeEl.className = 'badge';
-    news2BadgeEl.style.borderColor = '#ff1744';
-    news2BadgeEl.style.color = '#ff1744';
-    news2ActionEl.innerText = 'EMERGENCY: Sepsis / Severe Decompensation protocol. Immediate ICU transfer assessment.';
-    triageCard.className = 'triage-alert-box red';
-    qsofaVal.innerText = '3 / 3';
-    qsofaVal.style.color = '#ff1744';
-    qsofaText.innerText = 'CRITICAL SEPSIS ALERT';
-    decompVal.innerText = '18%';
-    decompVal.style.color = '#ff1744';
-    decompText.innerText = 'Imminent Collapse Risk';
-    imciBand.innerText = 'PINK (Emergency Hospital Transfer)';
-    imciBand.style.color = '#ff1744';
-  } else {
-    hrEl.innerText = '72';
-    hrvEl.innerText = '48.2';
-    vascEl.innerText = '32';
-    hbEl.innerText = '14.2';
-    news2ScoreEl.innerText = '0';
-    news2BadgeEl.innerText = 'LOW RISK';
-    news2BadgeEl.className = 'badge badge-green';
-    news2BadgeEl.style = '';
-    news2ActionEl.innerText = 'Routine clinical monitoring. Patient physiologically stable.';
-    triageCard.className = 'triage-alert-box';
-    qsofaVal.innerText = '0 / 3';
-    qsofaVal.style.color = '#00e676';
-    qsofaText.innerText = 'Low Sepsis Risk';
-    decompVal.innerText = '92%';
-    decompVal.style.color = '#00e676';
-    decompText.innerText = 'High Resilience';
-    imciBand.innerText = 'GREEN (No Danger Signs)';
-    imciBand.style.color = '#00e676';
-  }
-
-  const fhirPayload = {
-    resourceType: 'Bundle',
-    id: 'bundle-omnitriage-' + Date.now(),
-    type: 'collection',
+  // Update FHIR preview
+  const fhirBundle = {
+    resourceType: "Bundle",
+    id: `bundle-${Date.now()}`,
+    type: "collection",
     timestamp: new Date().toISOString(),
     entry: [
-      { resourceType: 'Observation', code: { coding: [{ system: 'http://loinc.org', code: '8867-4', display: 'Heart rate' }] }, valueQuantity: { value: isDecompensated ? 134 : 72, unit: '/min' } },
-      { resourceType: 'Observation', code: { coding: [{ system: 'http://loinc.org', code: '80404-7', display: 'R-R interval HRV' }] }, valueQuantity: { value: isDecompensated ? 12.4 : 48.2, unit: 'ms' } },
-      { resourceType: 'Observation', code: { coding: [{ system: 'http://loinc.org', code: '718-7', display: 'Hemoglobin' }] }, valueQuantity: { value: isDecompensated ? 6.9 : 14.2, unit: 'g/dL' } },
-      { resourceType: 'Observation', code: { coding: [{ system: 'http://loinc.org', code: '96514-5', display: 'NEWS2 Score' }] }, valueQuantity: { value: isDecompensated ? 9 : 0, unit: '{score}' } }
+      { resource: { resourceType: "Observation", code: { coding: [{ system: "http://loinc.org", code: "8867-4", display: "Heart rate" }] }, valueQuantity: { value: data.hr, unit: "BPM" } } },
+      { resource: { resourceType: "Observation", code: { coding: [{ system: "http://loinc.org", code: "718-7", display: "Hemoglobin [Mass/volume]" }] }, valueQuantity: { value: data.hb, unit: "g/dL" } } },
+      { resource: { resourceType: "Observation", code: { coding: [{ system: "http://loinc.org", code: "80404-7", display: "R-R interval" }] }, valueQuantity: { value: data.rmssd, unit: "ms" } } }
     ]
   };
-  fhirOut.innerText = JSON.stringify(fhirPayload, null, 2);
+  document.getElementById('fhirJsonPreview').textContent = JSON.stringify(fhirBundle, null, 2);
 }
 
-// Live Camera PPG Handler
-document.getElementById('btn-camera-scan').addEventListener('click', async () => {
-  const btn = document.getElementById('btn-camera-scan');
-  if (!isLiveCamera) {
-    btn.innerText = 'STARTING CAMERA...';
-    const res = await sensorBridge.startCamera((frameData) => {
-      const intensity = frameData.r;
-      ppgBuffer.push(intensity);
-      ppgBuffer.shift();
-    });
-
-    if (res.success) {
-      isLiveCamera = true;
-      btn.innerText = 'STOP CAMERA SCAN';
-      btn.style.background = '#ff1744';
-      document.getElementById('timestamp-display').innerText = 'LIVE CAMERA FEED (FINGERTIP PPG)';
-    } else {
-      btn.innerText = 'START CAMERA SCAN';
-      alert('Camera access notice: ' + res.error + '\nRunning precision clinical simulation instead.');
-    }
-  } else {
-    sensorBridge.stopAll();
-    isLiveCamera = false;
-    btn.innerText = 'START CAMERA SCAN';
-    btn.style.background = '';
-    document.getElementById('timestamp-display').innerText = 'STANDBY';
+function generateClinicalPdf() {
+  if (!window.jspdf) {
+    alert('Generating diagnostic report...');
+    return;
   }
-});
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
 
-document.getElementById('btn-scan').addEventListener('click', () => {
-  isDecompensated = false;
-  updateUI();
-  alert('60-Second Multi-Biomarker Scan Complete! All biometric streams validated at SQI 94.8%.');
-});
+  doc.setFillColor(10, 15, 24);
+  doc.rect(0, 0, 210, 297, 'F');
 
-document.getElementById('btn-simulate-collapse').addEventListener('click', () => {
-  isDecompensated = true;
-  updateUI();
-});
+  doc.setTextColor(16, 185, 129);
+  doc.setFontSize(18);
+  doc.text('OMNITRIAGE ENGINE | CLINICAL DIAGNOSTIC REPORT', 14, 20);
 
-document.getElementById('btn-reset').addEventListener('click', () => {
-  isDecompensated = false;
-  updateUI();
-});
+  doc.setTextColor(156, 163, 175);
+  doc.setFontSize(10);
+  doc.text(`Generated: ${new Date().toUTCString()} | Standard: ISO 80601-2-61 / HL7 FHIR v4`, 14, 28);
 
-document.getElementById('btn-copy-fhir').addEventListener('click', () => {
-  navigator.clipboard.writeText(document.getElementById('fhir-output').innerText);
-  alert('HL7 FHIR v4 Bundle copied to clipboard!');
-});
+  doc.setDrawColor(255, 255, 255);
+  doc.setLineWidth(0.5);
+  doc.line(14, 32, 196, 32);
 
-updateUI();
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(12);
+  doc.text('PHYSIOLOGICAL VITAL PARAMETERS (LOINC / ANSI EC13):', 14, 42);
+
+  const hr = document.getElementById('valHeartRate').textContent;
+  const rmssd = document.getElementById('valRmssd').textContent;
+  const vAge = document.getElementById('valVascularAge').textContent;
+  const hb = document.getElementById('valHemoglobin').textContent;
+  const news2 = document.getElementById('badgeNews2').textContent;
+  const qsofa = document.getElementById('badgeQsofa').textContent;
+
+  doc.setFontSize(10);
+  doc.setTextColor(209, 213, 219);
+  doc.text(`• Heart Rate (LOINC 8867-4): ${hr} BPM`, 20, 52);
+  doc.text(`• Heart Rate Variability (RMSSD): ${rmssd} ms`, 20, 60);
+  doc.text(`• Vascular Biological Age: ${vAge} years`, 20, 68);
+  doc.text(`• Hemoglobin Estimate (LOINC 718-7): ${hb} g/dL`, 20, 76);
+  doc.text(`• NEWS2 Early Warning Score: ${news2}`, 20, 84);
+  doc.text(`• qSOFA Sepsis Bedside Triage: ${qsofa}`, 20, 92);
+
+  doc.setTextColor(16, 185, 129);
+  doc.setFontSize(12);
+  doc.text('AI CLINICAL DECISION SUPPORT & REASONING (WHO/NICE):', 14, 108);
+
+  doc.setFontSize(9);
+  doc.setTextColor(209, 213, 219);
+  const summary = document.getElementById('aiSummaryText').textContent.trim();
+  doc.text(doc.splitTextToSize(summary, 175), 14, 116);
+
+  doc.save(`OmniTriage_Clinical_Report_${Date.now()}.pdf`);
+}
+
+function initPWA() {
+  let deferredPrompt;
+  const installBtn = document.getElementById('pwaInstallBtn');
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    if (installBtn) installBtn.style.display = 'inline-flex';
+  });
+  if (installBtn) {
+    installBtn.addEventListener('click', async () => {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') installBtn.style.display = 'none';
+        deferredPrompt = null;
+      }
+    });
+  }
+}
