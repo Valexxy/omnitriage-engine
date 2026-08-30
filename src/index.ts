@@ -8,6 +8,10 @@ export * from './dsp/contact-pressure-guard';
 export * from './dsp/bioacoustic-engine';
 export * from './dsp/pupillometry-engine';
 
+export * from './world-first/casi-engine';
+export * from './world-first/hemodynamic-depletion-engine';
+export * from './world-first/fhir-qr-emergency-tag';
+
 export * from './triage/news2-triage';
 export * from './triage/qsofa-sepsis';
 export * from './triage/who-imci';
