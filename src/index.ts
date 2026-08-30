@@ -2,6 +2,9 @@ export * from './dsp/signal-quality-index';
 export * from './dsp/ppg-engine';
 export * from './dsp/apg-vascular-engine';
 export * from './dsp/anemia-spectro-engine';
+export * from './dsp/cielab-spectro-engine';
+export * from './dsp/melanin-equity-engine';
+export * from './dsp/contact-pressure-guard';
 export * from './dsp/bioacoustic-engine';
 export * from './dsp/pupillometry-engine';
 
