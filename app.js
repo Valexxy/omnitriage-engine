@@ -534,11 +534,22 @@ function finalise() {
   let hr = Math.round((fps / bestLag) * 60);
 
   // ─── ELGENDI PEAKS → IBI → HRV ─────────────────────────────────
-  const peaks = elgendiPeaks(det, bestLag);
+  const rawPeaks = elgendiPeaks(det, bestLag);
+  const rawIbis = [];
+  for (let j = 1; j < rawPeaks.length; j++) {
+    const ms = ((rawPeaks[j] - rawPeaks[j-1]) / fps) * 1000;
+    if (ms >= IBI_MIN && ms <= IBI_MAX) rawIbis.push(ms);
+  }
+
+  // Physiological Artifact & Ectopic Filter (Task Force 1996 / Berntson Rule):
+  // Filter out ectopic glitches and double-peaks outside 35% of dominant cardiac cycle
+  const expectedIbi = (60 / Math.max(30, hr)) * 1000;
   const ibiMs = [];
-  for (let j = 1; j < peaks.length; j++) {
-    const ms = ((peaks[j] - peaks[j-1]) / fps) * 1000;
-    if (ms >= IBI_MIN && ms <= IBI_MAX) ibiMs.push(ms);
+  for (let j = 0; j < rawIbis.length; j++) {
+    const v = rawIbis[j];
+    if (Math.abs(v - expectedIbi) / expectedIbi < 0.35) {
+      ibiMs.push(v);
+    }
   }
 
   let rmssd = null, sdnn = null, pnn50 = null, meanIbi = null;
@@ -581,8 +592,9 @@ function finalise() {
 
   // ─── HEMOGLOBIN (Erythema Index) ──────────────────────────────
   const μR = mean(rBuf), μG = mean(gBuf), μB = mean(bBuf);
+  // Erythema index normalized for illumination intensity
   const ei = Math.log10(Math.max(1, μR)) - Math.log10(Math.max(1, μG));
-  const rawHb = 5.5 + ei * 21.0;
+  const rawHb = 7.5 + ei * 13.5;
   const hb = Math.round(clamp(rawHb, 8.5, 17.5) * 10) / 10;
 
   // ─── SpO2 (R/B ratio, ISO 80601 calibration curve approx) ────
