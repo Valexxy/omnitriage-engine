@@ -229,19 +229,23 @@ function onFrame(frame) {
   const { r, g, b, timestamp: ts } = frame;
 
   // ─ Transillumination color & absorption gate ─
-  // iOS Safari / WebKit does not expose the hardware torch API to web browsers.
-  // We accommodate both bright flash transillumination and ambient/daylight illumination:
-  const isColorLiving = (r >= 55 && (r / (g + 1)) >= 1.12 && (r / (b + 1)) >= 1.18) || (r >= 45 && r > g && r > b && (r - g) > 8);
-  const isSaturated = r > 252 && g < 20 && b < 20;
-  const isAmbient = r > 140 && g > 120 && b > 105;
+  // Capillary blood strongly absorbs green/blue and passes red.
+  // In low ambient light (no torch), R can be ~30-40 while G/B are 10-20.
+  // When finger covers lens, R is dominant: R > G and R > B.
+  const isRedDominant = (r > g + 2) && (r > b + 2);
+  const isColorLiving = (r >= 30 && isRedDominant && (r / (g + 1)) >= 1.08) || (r >= 25 && (r - g) >= 5 && (r - b) >= 5);
+  const isSaturated = r > 252 && g < 18 && b < 18;
+  const isAmbient = r > 160 && g > 140 && b > 120;
+
+  // Real-time RGB diagnostic display on status bar so user sees exactly what the sensor is receiving
+  const rgbReadout = `R:${Math.round(r)} G:${Math.round(g)} B:${Math.round(b)}`;
 
   // Check dynamic capillary AC pulsatility across recent frames (living tissue has micro-oscillations)
   let isPulsatile = true;
-  if (gBuf.length >= 25) {
-    const recentG = gBuf.slice(-25);
+  if (gBuf.length >= 35) {
+    const recentG = gBuf.slice(-35);
     const gVar = variance(recentG);
-    // If variance is near-zero (< 0.03), camera is held against stationary non-living surface (e.g. red paper or desk)
-    if (gVar < 0.03) isPulsatile = false;
+    if (gVar < 0.015) isPulsatile = false;
   }
 
   const isLiving = isColorLiving && isPulsatile;
@@ -249,16 +253,16 @@ function onFrame(frame) {
 
   if (!isColorLiving) {
     fingerOn = false;
-    if (r < 40 && g < 40 && b < 40) {
-      setPill('⚠️ NO FINGER', '#f43f5e');
-      setGuid('error','No Finger Detected','Cover the rear camera lens AND flashlight firmly with your index finger.');
+    if (r < 25 && g < 25 && b < 25) {
+      setPill(`⚠️ TOO DARK (${rgbReadout})`, '#f43f5e');
+      setGuid('error','No Light Detected',`Sensor sees near total darkness (${rgbReadout}). Turn on phone flashlight or shine a light on your fingertip.`);
       haptic([100]);
     } else if (isAmbient) {
-      setPill('⚠️ COVER LIGHT', '#f59e0b');
-      setGuid('warn','Light Leak Detected','Cover BOTH the camera lens AND the LED flash completely to prevent ambient leakage.');
+      setPill(`⚠️ WHITE LIGHT (${rgbReadout})`, '#f59e0b');
+      setGuid('warn','Light Leak Detected',`Direct room light hitting lens (${rgbReadout}). Cover camera lens completely with finger pad.`);
     } else {
-      setPill('⚠️ REPOSITION', '#f59e0b');
-      setGuid('warn','Incorrect Placement','Ensure finger pad covers both camera and flash. Use index finger pad, not tip.');
+      setPill(`⚠️ REPOSITION (${rgbReadout})`, '#f59e0b');
+      setGuid('warn','Adjust Placement',`Camera sees ${rgbReadout}. Move fingertip to the main lens until red blood glow is detected.`);
     }
     scopeWave.push(0);
     if (scopeWave.length > SCOPE_POINTS) scopeWave.shift();
