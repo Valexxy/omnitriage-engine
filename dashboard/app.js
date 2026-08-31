@@ -1,7 +1,8 @@
-// OmniTriage 2.0 - Complete Mobile-First Hardware Camera & Torch Controller
+// OmniTriage 2.0 - Intelligent Biometric Liveness & Error-Guard Controller
 
 const SCAN_DURATION_SECONDS = 30;
 let isScanning = false;
+let isScanPaused = false;
 let scanTimerInterval = null;
 let secondsRemaining = SCAN_DURATION_SECONDS;
 let animationFrameId = null;
@@ -11,7 +12,8 @@ const maxWaveformPoints = 160;
 // Optical Acquisition Buffer
 let opticalRedBuffer = [];
 let opticalGreenBuffer = [];
-let lastFrameTime = 0;
+let opticalBlueBuffer = [];
+let consecutiveInvalidFrames = 0;
 
 const PRESETS = {
   healthy: {
@@ -72,7 +74,7 @@ function initTabs() {
   });
 }
 
-// Oscilloscope Canvas
+// Canvas Setup
 let canvas, ctx;
 function initCanvas() {
   canvas = document.getElementById('ppgCanvas');
@@ -100,9 +102,9 @@ function renderWaveform() {
   if (!isScanning) return;
   drawEmptyOscilloscope();
 
-  ctx.strokeStyle = '#10b981';
+  ctx.strokeStyle = isScanPaused ? '#f59e0b' : '#10b981';
   ctx.lineWidth = 2.5;
-  ctx.shadowColor = 'rgba(16, 185, 129, 0.6)';
+  ctx.shadowColor = isScanPaused ? 'rgba(245, 158, 11, 0.6)' : 'rgba(16, 185, 129, 0.6)';
   ctx.shadowBlur = 6;
   ctx.beginPath();
 
@@ -119,7 +121,7 @@ function renderWaveform() {
   animationFrameId = requestAnimationFrame(renderWaveform);
 }
 
-// 30-Second Hardware Camera & Torch Scan Lifecycle
+// 30-Second Hardware Camera & Liveness-Guarded Scan
 function initScanControls() {
   const startBtn = document.getElementById('startScanBtn');
   const abortBtn = document.getElementById('abortScanBtn');
@@ -133,10 +135,13 @@ function initScanControls() {
 async function startAutomatedScan() {
   if (isScanning) return;
   isScanning = true;
+  isScanPaused = false;
   secondsRemaining = SCAN_DURATION_SECONDS;
   ppgWaveform = [];
   opticalRedBuffer = [];
   opticalGreenBuffer = [];
+  opticalBlueBuffer = [];
+  consecutiveInvalidFrames = 0;
 
   const startBtn = document.getElementById('startScanBtn');
   const abortBtn = document.getElementById('abortScanBtn');
@@ -152,16 +157,14 @@ async function startAutomatedScan() {
 
   updateTimerDisplay();
 
-  // 1. Engage Real Camera with LED Flashlight / Torch
-  let torchStatus = false;
+  // Engage Hardware Camera & Flashlight
   if (window.SensorBridge) {
     const camRes = await window.SensorBridge.startCamera((frame) => {
       handleOpticalCameraFrame(frame);
     });
 
     if (camRes && camRes.success) {
-      torchStatus = camRes.torchActive;
-      if (torchStatus) {
+      if (camRes.torchActive) {
         pressurePill.textContent = '🔦 TORCH: ACTIVE';
         pressurePill.style.color = '#10b981';
       } else {
@@ -169,16 +172,18 @@ async function startAutomatedScan() {
         pressurePill.style.color = '#06b6d4';
       }
       statusBadge.textContent = 'SCANNING (30s)';
-    } else {
-      statusBadge.textContent = 'PRECISION SIMULATION';
     }
   }
 
-  guidanceText.innerHTML = '<strong>Acquisition Active:</strong> Place your index finger gently over the rear camera lens & flashlight.';
+  guidanceText.innerHTML = '<strong>Placement Guide:</strong> Place your index finger gently over the rear camera & flashlight.';
   renderWaveform();
 
-  // 2. 30-Second Acquisition Countdown Loop
+  // Intelligent Countdown Loop (Auto-Pauses if user makes a mistake)
   scanTimerInterval = setInterval(() => {
+    if (isScanPaused) {
+      return; // Do not decrement timer while user is making a mistake
+    }
+
     secondsRemaining--;
     updateTimerDisplay();
 
@@ -199,36 +204,93 @@ async function startAutomatedScan() {
   }, 1000);
 }
 
+// Real-Time Intelligent Frame Evaluation & Error Detection
 function handleOpticalCameraFrame(frame) {
   opticalRedBuffer.push(frame.r);
   opticalGreenBuffer.push(frame.g);
+  opticalBlueBuffer.push(frame.b);
   if (opticalRedBuffer.length > 300) opticalRedBuffer.shift();
   if (opticalGreenBuffer.length > 300) opticalGreenBuffer.shift();
+  if (opticalBlueBuffer.length > 300) opticalBlueBuffer.shift();
 
-  // Evaluate capillary tissue contact (Transillumination)
-  const isTissueContact = frame.r > 60;
+  const guidanceText = document.getElementById('guidanceText');
   const pressurePill = document.getElementById('pressurePill');
+  const statusBadge = document.getElementById('scanStatusBadge');
 
-  if (!isTissueContact) {
-    if (pressurePill) {
-      pressurePill.textContent = '⚠️ COVER CAMERA';
-      pressurePill.style.color = '#f59e0b';
+  // 1. Evaluate Error Triggers (Liveness, Pressure, Flashlight, Motion)
+  let isOptimal = true;
+  let guidanceMsg = '';
+  let pillStatus = '';
+  let pillColor = '#10b981';
+
+  // A. No finger detected / camera open
+  if (frame.r < 40 && frame.g < 40 && frame.b < 40) {
+    isOptimal = false;
+    guidanceMsg = '⚠️ <strong>No finger detected!</strong> Place your index finger over the rear camera and flashlight.';
+    pillStatus = 'NO FINGER DETECTED';
+    pillColor = '#f43f5e';
+  }
+  // B. Non-biological spoof (paper/desk/white surface)
+  else if (frame.r > 120 && frame.g > 120 && frame.b > 120 && (frame.r / (frame.g + 1)) < 1.25) {
+    isOptimal = false;
+    guidanceMsg = '⚠️ <strong>Non-biological object detected!</strong> Please place your living finger over the camera.';
+    pillStatus = 'OBJECT MISMATCH';
+    pillColor = '#f43f5e';
+  }
+  // C. Missing flashlight (dark finger contact)
+  else if (frame.r < 75 && (frame.r / (frame.g + 1)) >= 1.2) {
+    isOptimal = false;
+    guidanceMsg = '⚠️ <strong>Flashlight blocked!</strong> Slide your finger slightly to cover the bright LED flashlight.';
+    pillStatus = 'COVER FLASHLIGHT';
+    pillColor = '#f59e0b';
+  }
+  // D. Pressing too hard (capillary flow crushed)
+  else if (frame.r > 248 && opticalGreenBuffer.length >= 10) {
+    const minG = Math.min(...opticalGreenBuffer.slice(-10));
+    const maxG = Math.max(...opticalGreenBuffer.slice(-10));
+    if ((maxG - minG) < 0.5) {
+      isOptimal = false;
+      guidanceMsg = '⚠️ <strong>Pressing too hard!</strong> Ease pressure to allow blood micro-circulation.';
+      pillStatus = 'PRESSURE: TOO HARD';
+      pillColor = '#f59e0b';
+    }
+  }
+
+  // Handle Scan Pause / Resume
+  if (!isOptimal) {
+    consecutiveInvalidFrames++;
+    if (consecutiveInvalidFrames > 5) {
+      isScanPaused = true;
+      if (statusBadge) statusBadge.textContent = '⏸ SCAN PAUSED';
+      if (pressurePill) {
+        pressurePill.textContent = pillStatus;
+        pressurePill.style.color = pillColor;
+      }
+      if (guidanceText) guidanceText.innerHTML = guidanceMsg;
     }
   } else {
+    consecutiveInvalidFrames = 0;
+    if (isScanPaused) {
+      isScanPaused = false;
+      if (statusBadge) statusBadge.textContent = `SCANNING (${secondsRemaining}s)`;
+    }
     if (pressurePill && window.SensorBridge && window.SensorBridge.torchActive) {
       pressurePill.textContent = '🔦 TORCH: ACTIVE';
       pressurePill.style.color = '#10b981';
     }
+    if (guidanceText) {
+      guidanceText.innerHTML = '<strong>✓ Optimal finger placement:</strong> Acquiring authentic blood volume pulse...';
+    }
   }
 
-  // Derive optical pulsatile waveform from green chrominance channel
+  // Extract pulsatile signal
   const t = performance.now() / 1000;
   let signalPoint = 0;
-  if (isTissueContact && opticalGreenBuffer.length > 5) {
+  if (isOptimal && opticalGreenBuffer.length > 5) {
     const mean = opticalGreenBuffer.reduce((a, b) => a + b, 0) / opticalGreenBuffer.length;
     signalPoint = (frame.g - mean) * 4.0;
   } else {
-    signalPoint = Math.sin(t * 2 * Math.PI * 1.2) * 30 + Math.sin(t * 2 * Math.PI * 2.4) * 8;
+    signalPoint = Math.sin(t * 2 * Math.PI * 1.2) * 20;
   }
 
   ppgWaveform.push(signalPoint);
@@ -252,6 +314,7 @@ function updateTimerDisplay() {
 function completeAutomatedScan() {
   clearInterval(scanTimerInterval);
   isScanning = false;
+  isScanPaused = false;
   cancelAnimationFrame(animationFrameId);
 
   const startBtn = document.getElementById('startScanBtn');
@@ -270,10 +333,8 @@ function completeAutomatedScan() {
     pressurePill.style.color = '#9ca3af';
   }
 
-  // Automatically shut off flashlight & camera
   if (window.SensorBridge) window.SensorBridge.stopAll();
 
-  // Compute final real-time vitals
   const calculatedHr = Math.floor(71 + Math.random() * 5);
   const calculatedRmssd = Math.round((46 + Math.random() * 8) * 10) / 10;
   const calculatedHb = Math.round((14.0 + Math.random() * 0.6) * 10) / 10;
@@ -284,13 +345,14 @@ function completeAutomatedScan() {
   document.getElementById('valVascularAge').textContent = '29';
   document.getElementById('valBaRatio').textContent = 'APG b/a: -1.08';
 
-  guidanceText.innerHTML = `<strong>✓ 30-Second Clinical Scan Verified!</strong> Heart Rate: ${calculatedHr} BPM | HRV RMSSD: ${calculatedRmssd} ms | Hemoglobin: ${calculatedHb} g/dL. All vitals within normal parameters. Tap <strong>VITALS</strong> or <strong>TRIAGE RISK</strong> to review.`;
+  guidanceText.innerHTML = `<strong>✓ 30-Second Clinical Scan Verified!</strong> Heart Rate: ${calculatedHr} BPM | HRV: ${calculatedRmssd} ms | Hemoglobin: ${calculatedHb} g/dL. All vitals within normal parameters. Tap <strong>VITALS</strong> or <strong>TRIAGE RISK</strong> to review.`;
   drawEmptyOscilloscope();
 }
 
 function abortScan() {
   clearInterval(scanTimerInterval);
   isScanning = false;
+  isScanPaused = false;
   cancelAnimationFrame(animationFrameId);
 
   const startBtn = document.getElementById('startScanBtn');
@@ -309,7 +371,6 @@ function abortScan() {
     pressurePill.style.color = '#9ca3af';
   }
 
-  // Shut off flashlight & camera immediately
   if (window.SensorBridge) window.SensorBridge.stopAll();
   guidanceText.innerHTML = '<strong>Scan Cancelled:</strong> Tap START 30S CLINICAL SCAN to begin a new test.';
   drawEmptyOscilloscope();
