@@ -966,8 +966,107 @@ function news2Recommendation(score, band, sepCount, afib) {
 function updateAiTab(r) {
   buildDdx(r);
   buildIsbar(r);
-  // Env impact update
   updateEnvImpact(r);
+
+  // Trigger Live Google Gemini 2.5 Medical AI Analysis
+  callGeminiClinicalAI(r);
+}
+
+async function callGeminiClinicalAI(r) {
+  const statusBadge = el('geminiAiStatus');
+  const patientCard = el('patientAiCard');
+  const explanationEl = el('patientAiExplanation');
+  const coherenceBadge = el('coherenceBadge');
+
+  if (statusBadge) {
+    statusBadge.textContent = '⏳ GEMINI 2.5 REASONING...';
+    statusBadge.style.color = '#06b6d4';
+    statusBadge.style.borderColor = 'rgba(6,182,212,0.4)';
+    statusBadge.style.background = 'rgba(6,182,212,0.1)';
+  }
+
+  try {
+    const payload = {
+      age: r.age, sex: r.sex, mode: r.mode,
+      hr: r.hr, spo2: r.spo2, hb: r.hb, rrBpm: r.rrBpm,
+      rmssd: r.rmssd, sdnn: r.sdnn, pi: r.pi,
+      vascularAge: r.vascularAge, baRatio: r.baRatio,
+      news2: r.news2, news2Band: r.news2Band,
+      sepCount: r.sepCount, afibSuspected: r.afibSuspected, afibCov: r.afibCov,
+      env: {
+        temp: el('evTemp')?.textContent,
+        humidity: el('evHumid')?.textContent,
+        aqi: el('evAqi')?.textContent,
+        altitude: el('pAlt')?.value || 0
+      }
+    };
+
+    const res = await fetch('/api/clinical-ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data.success || !data.ai_analysis) throw new Error(data.error || 'Invalid AI response');
+
+    const ai = data.ai_analysis;
+
+    // 1. Update Status Badge
+    if (statusBadge) {
+      statusBadge.textContent = '⚡ GEMINI 2.5 VERIFIED';
+      statusBadge.style.color = '#10b981';
+      statusBadge.style.borderColor = 'rgba(16,185,129,0.4)';
+      statusBadge.style.background = 'rgba(16,185,129,0.15)';
+    }
+
+    // 2. Update Patient-Facing Explanation
+    if (patientCard && explanationEl) {
+      patientCard.style.display = 'block';
+      explanationEl.textContent = ai.patient_explanation || 'Physiological assessment complete.';
+      if (coherenceBadge) {
+        coherenceBadge.textContent = ai.coherence_status === 'COHERENT' ? '✓ PHYSIOLOGICALLY COHERENT' : '⚠️ ARTEFACT SUSPECTED';
+        coherenceBadge.style.color = ai.coherence_status === 'COHERENT' ? '#10b981' : '#f59e0b';
+        coherenceBadge.style.background = ai.coherence_status === 'COHERENT' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)';
+      }
+    }
+
+    // 3. Update DDx with Gemini-ranked predictions
+    if (ai.differential_diagnosis && ai.differential_diagnosis.length) {
+      const list = el('ddxList');
+      if (list) {
+        list.innerHTML = ai.differential_diagnosis.map((d, i) => `
+          <div class="ddx-row ${i===0?'ddx-top':''}">
+            <div class="ddx-cond">${i===0?'⭐ ':''}${d.condition}</div>
+            <div class="ddx-prob-wrap">
+              <div class="ddx-prob-bar" style="width:${Math.round(d.probability)}%;background:${d.probability>=70?'#10b981':d.probability>=40?'#f59e0b':'#6b7280'}"></div>
+              <span class="ddx-pct">${Math.round(d.probability)}%</span>
+            </div>
+            <div class="ddx-icd">ICD-11: ${d.icd11 || '--'}</div>
+          </div>
+        `).join('');
+      }
+    }
+
+    // 4. Update ISBAR with Gemini Clinical Notes
+    if (ai.isbar) {
+      if (ai.isbar.identify) elSet('isbarI', ai.isbar.identify);
+      if (ai.isbar.situation) elSet('isbarS', ai.isbar.situation);
+      if (ai.isbar.background) elSet('isbarB', ai.isbar.background);
+      if (ai.isbar.assessment) elSet('isbarA', ai.isbar.assessment);
+      if (ai.isbar.recommendation) elSet('isbarR', ai.isbar.recommendation);
+    }
+
+  } catch (err) {
+    console.warn('[OmniTriage AI] Gemini API fallback to on-device engine:', err);
+    if (statusBadge) {
+      statusBadge.textContent = '⚕ ON-DEVICE CLINICAL CDSS';
+      statusBadge.style.color = '#9ca3af';
+      statusBadge.style.borderColor = 'rgba(255,255,255,0.1)';
+      statusBadge.style.background = 'rgba(255,255,255,0.05)';
+    }
+  }
 }
 
 // ─── ENVIRONMENTAL DATA ───────────────────────────────────────────────────────
