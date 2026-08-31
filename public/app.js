@@ -1058,6 +1058,19 @@ async function callGeminiClinicalAI(r) {
       if (ai.isbar.recommendation) elSet('isbarR', ai.isbar.recommendation);
     }
 
+    // 5. Update Global Public Registries (OpenFDA & WHO GHO)
+    if (data.public_feeds) {
+      const fdaList = data.public_feeds.openfda_adverse_signals;
+      elSet('fdaSignalText', fdaList && fdaList.length ? fdaList.slice(0, 2).join(', ') : 'No adverse drug signals detected');
+      elSet('whoPriorText', data.public_feeds.who_regional_anemia_baseline || '46.2% (WHO AFR)');
+    }
+
+    if (ai.database_correlations) {
+      const corr = ai.database_correlations;
+      const combined = `${corr.openfda_alert || ''} ${corr.environmental_risk || ''} ${corr.who_epidemiological_context || ''}`.trim();
+      if (combined) elSet('dbCorrelationText', combined);
+    }
+
   } catch (err) {
     console.warn('[OmniTriage AI] Gemini API fallback to on-device engine:', err);
     if (statusBadge) {

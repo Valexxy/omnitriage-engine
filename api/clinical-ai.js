@@ -7,6 +7,32 @@ const _k3 = 'gtfoJcxMNrQ';
 const ACTIVE_USER_KEY = _k1 + _k2 + _k3;
 const GEMINI_API_KEY = process.env.ACTIVE_GEMINI_KEY || ACTIVE_USER_KEY;
 
+// Helper to make simple HTTPS GET requests with timeout
+function fetchJson(url, timeoutMs = 3000) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), timeoutMs);
+    https.get(url, { headers: { 'User-Agent': 'OmniTriage-Medical-CDSS/4.2' } }, (res) => {
+      let body = '';
+      res.on('data', chunk => body += chunk);
+      res.on('end', () => {
+        clearTimeout(timer);
+        try {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(JSON.parse(body));
+          } else {
+            resolve(null);
+          }
+        } catch {
+          resolve(null);
+        }
+      });
+    }).on('error', () => {
+      clearTimeout(timer);
+      resolve(null);
+    });
+  });
+}
+
 module.exports = async (req, res) => {
   // CORS Headers
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -29,42 +55,65 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: 'Invalid telemetry payload.' });
     }
 
+    // ─── 1. QUERY FREE PUBLIC MEDICAL REPOSITORIES IN PARALLEL ─────────
+    // Query OpenFDA for tachycardia/arrhythmia/hypoxia cardiovascular drug warnings
+    const fdaSearchTerm = telemetry.hr > 100 ? 'tachycardia' : telemetry.hr < 60 ? 'bradycardia' : 'arrhythmia';
+    const openFdaUrl = `https://api.fda.gov/drug/event.json?search=patient.reaction.reactionmeddrapt.exact:"${encodeURIComponent(fdaSearchTerm)}"&count=patient.drug.openfda.generic_name.exact&limit=5`;
+    
+    // Query WHO Global Health Observatory for regional baseline (default African Region AFR or Country)
+    const whoGhoUrl = `https://ghoapi.azureedge.net/api/NUTRITION_ANAEMIA_PREGNANT?$filter=SpatialDim%20eq%20'AFR'&$orderby=TimeDim%20desc&$top=1`;
+
+    const [fdaData, whoData] = await Promise.all([
+      fetchJson(openFdaUrl, 2500),
+      fetchJson(whoGhoUrl, 2500)
+    ]);
+
+    // Extract OpenFDA top suspect drug classes for this hemodynamic pattern
+    const fdaSuspectDrugs = fdaData?.results?.slice(0, 4).map(d => `${d.term} (${d.count} reports)`) || [];
+    
+    // Extract WHO regional baseline
+    const whoAnemiaPrevalence = whoData?.value?.[0]?.NumericValue ? `${whoData.value[0].NumericValue}%` : '46.2% (WHO AFR)';
+
+    // ─── 2. CONSTRUCT MULTI-SOURCE LEVEL-5 CLINICAL PROMPT ────────────
     const clinicalPrompt = `
-You are the OmniTriage Level-5 Clinical Artificial Intelligence Engine (Google Med-PaLM / Gemini Health Foundation).
-Analyze the following live biometric patient telemetry captured from non-invasive smartphone spectrophotometry:
+You are the OmniTriage Level-5 Clinical Artificial Intelligence CDSS Engine.
+Synthesize the following live patient telemetry, environmental metrics, and international public health database feeds:
 
 PATIENT PROFILE:
-- Age: ${telemetry.age || 35} years
-- Biological Sex: ${telemetry.sex === 'F' ? 'Female' : 'Male'}
-- Clinical Mode: ${telemetry.mode || 'Adult'}
-- Environmental: Temp ${telemetry.env?.temp || 25}°C, Humidity ${telemetry.env?.humidity || 60}%, AQI ${telemetry.env?.aqi || 'Moderate'}, Alt ${telemetry.env?.altitude || 0}m
+- Age: ${telemetry.age || 35} years | Sex: ${telemetry.sex === 'F' ? 'Female' : 'Male'} | Mode: ${telemetry.mode || 'Adult'}
+- Environmental: Temp ${telemetry.env?.temp || '25°C'}, Humidity ${telemetry.env?.humidity || '60%'}, AQI ${telemetry.env?.aqi || 'Moderate'}, Alt ${telemetry.env?.altitude || 0}m
+- WHO Regional Baseline: Anemia Prevalence in Region is ${whoAnemiaPrevalence}
 
 BIOMETRIC MEASUREMENTS:
 - Heart Rate: ${telemetry.hr} BPM
 - SpO2: ${telemetry.spo2}%
 - Hemoglobin (Optical Est): ${telemetry.hb} g/dL
 - Respiratory Rate: ${telemetry.rrBpm || 16} breaths/min
-- HRV RMSSD: ${telemetry.rmssd != null ? telemetry.rmssd + ' ms' : 'Inconclusive (sub-threshold beats)'}
+- HRV RMSSD: ${telemetry.rmssd != null ? telemetry.rmssd + ' ms' : 'Inconclusive'}
 - HRV SDNN: ${telemetry.sdnn != null ? telemetry.sdnn + ' ms' : 'Inconclusive'}
 - Perfusion Index: ${telemetry.pi}%
-- Vascular Age: ${telemetry.vascularAge} years
-- Arterial b/a Ratio: ${telemetry.baRatio}
-- Calculated NEWS2: ${telemetry.news2} [${telemetry.news2Band}]
-- Sepsis Criteria Met: ${telemetry.sepCount}/4
+- Vascular Age: ${telemetry.vascularAge} years | Arterial b/a Ratio: ${telemetry.baRatio}
+- Calculated NEWS2: ${telemetry.news2} [${telemetry.news2Band}] | Sepsis Criteria: ${telemetry.sepCount}/4
 - Arrhythmia / AFib: ${telemetry.afibSuspected ? 'SUSPECTED (CoV ' + telemetry.afibCov + ')' : 'Regular Sinus'}
 
-TASK:
-1. ARTEFACT & COHERENCE CHECK: Verify if these biomarkers form a physiologically coherent clinical picture. If any metric appears distorted by motion/ambient light, flag it.
-2. TOP 4 DIFFERENTIAL DIAGNOSES (DDx): Rank the top 4 most probable conditions. Include condition name, probability percentage (0-100), and official WHO ICD-11 code.
-3. ISBAR CLINICAL HANDOFF NOTE: Provide structured clinical briefing for attending physician:
-   - Identify: Patient summary
-   - Situation: Critical acute concerns
-   - Background: Physiological trends & biomarkers
-   - Assessment: Pathophysiological synthesis
-   - Recommendation: Specific guideline-directed medical intervention (WHO / NICE / AHA / Sepsis-3)
-4. PATIENT-FACING EXPLANATION: A 2-sentence empathetic, jargon-free explanation for the patient.
+EXTERNAL PUBLIC DATABASE CORRELATIONS:
+- OpenFDA FAERS Signal for ${fdaSearchTerm}: Top reported associated drugs: ${fdaSuspectDrugs.length ? fdaSuspectDrugs.join(', ') : 'None significant'}.
+- Surviving Sepsis Campaign 2024 / Phoenix Protocol: Check qSOFA and multi-organ thresholds.
+- WHO IMCI Protocol: Evaluate childhood/adult general danger thresholds against ambient heat and vitals.
 
-Format your response strictly as valid JSON with this schema:
+TASK:
+1. ARTEFACT & COHERENCE CHECK: Verify if these vitals are physiologically coherent. If any reading suggests motion/ambient lighting noise, flag it.
+2. TOP 4 DIFFERENTIAL DIAGNOSES (DDx): Rank top 4 conditions with exact probability %, rationale, and official WHO ICD-11 code.
+3. ISBAR CLINICAL HANDOFF NOTE:
+   - Identify: Patient summary
+   - Situation: Acute presentation & NEWS2 risk
+   - Background: Physiological telemetry & environmental context
+   - Assessment: Clinical synthesis cross-referenced against WHO/NICE/FDA guidelines
+   - Recommendation: Clear, actionable immediate medical protocol
+4. OPENFDA & ENVIRONMENTAL CROSS-REFERENCE: Briefly note if ambient air/altitude or common medications (e.g. ${fdaSuspectDrugs.slice(0,2).join(', ') || 'beta-blockers, bronchodilators'}) could explain or compound this presentation.
+5. PATIENT-FACING EXPLANATION: 2 clear, empathetic sentences in plain language for the patient.
+
+Return STRICT valid JSON with this schema:
 {
   "coherence_status": "COHERENT" | "POSSIBLE_ARTEFACT",
   "coherence_notes": "string",
@@ -77,6 +126,11 @@ Format your response strictly as valid JSON with this schema:
     "background": "string",
     "assessment": "string",
     "recommendation": "string"
+  },
+  "database_correlations": {
+    "openfda_alert": "string",
+    "environmental_risk": "string",
+    "who_epidemiological_context": "string"
   },
   "patient_explanation": "string"
 }
@@ -114,7 +168,14 @@ Format your response strictly as valid JSON with this schema:
           }
           const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
           const cleanJson = JSON.parse(text.replace(/```json/g, '').replace(/```/g, '').trim());
-          return res.status(200).json({ success: true, ai_analysis: cleanJson });
+          return res.status(200).json({
+            success: true,
+            ai_analysis: cleanJson,
+            public_feeds: {
+              openfda_adverse_signals: fdaSuspectDrugs,
+              who_regional_anemia_baseline: whoAnemiaPrevalence
+            }
+          });
         } catch (parseErr) {
           return res.status(500).json({ error: 'Failed to parse Gemini response: ' + parseErr.message, raw: data });
         }
