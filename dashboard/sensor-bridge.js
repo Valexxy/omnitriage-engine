@@ -1,6 +1,6 @@
 /**
  * OmniTriage Live Smartphone Sensor Bridge
- * Real-time camera optical frame extraction with hardware torch support & microphone streaming.
+ * 100% Real Optical Camera & LED Torch Frame Extractor
  */
 
 class SmartphoneSensorBridge {
@@ -10,23 +10,16 @@ class SmartphoneSensorBridge {
     this.videoElement.muted = true;
     this.videoElement.autoplay = true;
     this.stream = null;
-    this.audioContext = null;
-    this.analyser = null;
     this.isCameraActive = false;
-    this.isAudioActive = false;
     this.canvas = document.createElement('canvas');
     this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
     this.torchActive = false;
     this.onFrame = null;
   }
 
-  /**
-   * Starts rear camera with LED Flash (Torch) on mobile devices
-   */
   async startCamera(onFrameCallback) {
     this.onFrame = onFrameCallback;
     try {
-      // 1. Request environment rear camera with maximum frame rate
       const constraints = {
         video: {
           facingMode: { ideal: 'environment' },
@@ -41,12 +34,10 @@ class SmartphoneSensorBridge {
       this.videoElement.srcObject = this.stream;
       await this.videoElement.play();
 
-      // 2. Locate video track and engage physical LED Torch / Flashlight
       const track = this.stream.getVideoTracks()[0];
       let torchEnabled = false;
 
       if (track) {
-        // Method A: Check capabilities
         const capabilities = track.getCapabilities ? track.getCapabilities() : {};
         if (capabilities.torch || 'torch' in capabilities) {
           try {
@@ -54,24 +45,21 @@ class SmartphoneSensorBridge {
             torchEnabled = true;
             this.torchActive = true;
           } catch (torchErr) {
-            console.warn('[SensorBridge] Direct torch constraint failed, trying fallback:', torchErr);
+            console.warn('[SensorBridge] Torch constraint failed:', torchErr);
           }
         }
 
-        // Method B: Try applyConstraints directly even if capabilities were hidden
         if (!torchEnabled && track.applyConstraints) {
           try {
             await track.applyConstraints({ advanced: [{ torch: true }] });
             torchEnabled = true;
             this.torchActive = true;
-          } catch (e) {
-            console.info('[SensorBridge] Hardware torch not accessible in this browser (iOS/Sandbox).');
-          }
+          } catch (e) {}
         }
       }
 
-      this.canvas.width = 64;
-      this.canvas.height = 64;
+      this.canvas.width = 48;
+      this.canvas.height = 48;
       this.isCameraActive = true;
       this._processFrames();
 
@@ -95,16 +83,16 @@ class SmartphoneSensorBridge {
       const data = imageData.data;
 
       let rSum = 0, gSum = 0, bSum = 0;
-      const count = data.length / 4;
+      const pixelCount = data.length / 4;
       for (let i = 0; i < data.length; i += 4) {
         rSum += data[i];
         gSum += data[i + 1];
         bSum += data[i + 2];
       }
 
-      const rAvg = rSum / count;
-      const gAvg = gSum / count;
-      const bAvg = bSum / count;
+      const rAvg = rSum / pixelCount;
+      const gAvg = gSum / pixelCount;
+      const bAvg = bSum / pixelCount;
 
       if (this.onFrame) {
         this.onFrame({ r: rAvg, g: gAvg, b: bAvg, timestamp: performance.now() });
@@ -116,11 +104,8 @@ class SmartphoneSensorBridge {
 
   stopAll() {
     this.isCameraActive = false;
-    this.isAudioActive = false;
-
     if (this.stream) {
       this.stream.getTracks().forEach(track => {
-        // Turn off torch before stopping
         try {
           if (track.applyConstraints) {
             track.applyConstraints({ advanced: [{ torch: false }] });
@@ -130,14 +115,8 @@ class SmartphoneSensorBridge {
       });
       this.stream = null;
     }
-
-    if (this.audioContext) {
-      try { this.audioContext.close(); } catch (e) {}
-      this.audioContext = null;
-    }
     this.torchActive = false;
   }
 }
 
-// Global Sensor Bridge Singleton
 window.SensorBridge = new SmartphoneSensorBridge();
