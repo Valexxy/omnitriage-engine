@@ -219,15 +219,39 @@ async function startScan() {
   await acquireWakeLock();
 
   if (window.SensorBridge) {
-    const cam = await window.SensorBridge.startCamera(onFrame);
-    if (!cam?.success) {
-      setStatus('⚠ CAMERA ERROR'); setGuid('error','Camera Permission','Allow camera access in browser settings.'); abort(); return;
+    if (algorithm === 'FACE') {
+      // 👤 Contactless Facial rPPG (Front-Facing Camera)
+      const cam = await window.SensorBridge.startCamera(onFrame, 'user');
+      if (!cam?.success) {
+        setStatus('⚠ FRONT CAMERA ERROR'); setGuid('error','Camera Access','Allow front camera permission for Contactless Facial rPPG.'); abort(); return;
+      }
+      setPill('👤 FACE rPPG ACTIVE', '#3b82f6');
+      setStatus('FACE POSITION LOCKED: TRACKING');
+      setGuid('info','Hold Steady','Hold phone steady facing your forehead & cheeks. Micro-vascular color pulses are streaming.');
+    } else if (algorithm === 'SCG') {
+      // 🫀 Sternal Seismocardiography (6-Axis IMU on Chest)
+      window.SensorBridge.startImu((imu) => {
+        // Feed Z-axis acceleration and Y-axis rotation into waveform oscilloscope
+        const cardiacMicroImpulse = (imu.az - 9.8) * 15 + imu.gy * 2;
+        scopeWave.push(cardiacMicroImpulse);
+        if (scopeWave.length > SCOPE_POINTS) scopeWave.shift();
+        fingerOn = true;
+      });
+      setPill('🫀 STERMAL IMU ACTIVE', '#ec4899');
+      setStatus('RECORDING MYOCARDIAL KINETICS');
+      setGuid('info','Sternal Contact','Keep phone resting flat on center of sternum. Capturing Aortic Valve Opening & Stroke Volume.');
+    } else {
+      // 👆 Contact Fingertip / Thumb Transillumination (Rear Camera + Torch)
+      const cam = await window.SensorBridge.startCamera(onFrame, 'environment');
+      if (!cam?.success) {
+        setStatus('⚠ CAMERA ERROR'); setGuid('error','Camera Permission','Allow rear camera access in browser settings.'); abort(); return;
+      }
+      setPill(cam.torchActive ? '🔦 TORCH: ACTIVE' : '📱 CAMERA ON', cam.torchActive ? '#10b981' : '#06b6d4');
+      setStatus('AWAITING CONTACT...');
+      setGuid('info','Placement','Cover rear camera with thumb, index finger, or palm base.');
     }
-    setPill(cam.torchActive ? '🔦 TORCH: ACTIVE' : '📱 CAMERA ON', cam.torchActive ? '#10b981' : '#06b6d4');
   }
 
-  setStatus('AWAITING FINGER...');
-  setGuid('info','Placement','Cover the rear camera AND flashlight with your index finger.');
   showLiveStrip(true);
   drawScope();
 
@@ -256,14 +280,18 @@ function onTick() {
 function onFrame(frame) {
   const { r, g, b, timestamp: ts } = frame;
 
-  // ─ Transillumination color & absorption gate ─
-  // Capillary blood in the thumb, index finger, or thenar eminence (palm base)
-  // absorbs green/blue light and passes red. 
-  // R is dominant: R > G and R > B, or overall optical absorption profile.
-  const isRedDominant = (r >= g) && (r >= b);
-  const isColorLiving = (r >= 20 && isRedDominant) || (r >= 25 && (r - g) >= 2);
+  // ─ Transillumination & Facial Optical Gate ─
+  let isColorLiving = false;
+  if (algorithm === 'FACE') {
+    // Contactless Facial rPPG: natural facial skin tone under ambient light
+    isColorLiving = (r >= 25 && g >= 15 && b >= 10);
+  } else {
+    // Contact Fingertip/Thumb Transillumination: blood absorbs G/B and passes R
+    const isRedDominant = (r >= g) && (r >= b);
+    isColorLiving = (r >= 20 && isRedDominant) || (r >= 25 && (r - g) >= 2);
+  }
   const isSaturated = r > 253 && g < 15 && b < 15;
-  const isAmbient = r > 175 && g > 155 && b > 140;
+  const isAmbient = algorithm !== 'FACE' && (r > 175 && g > 155 && b > 140);
 
   // Real-time RGB diagnostic display on status bar so user sees exactly what the sensor is receiving
   const rgbReadout = `R:${Math.round(r)} G:${Math.round(g)} B:${Math.round(b)}`;
