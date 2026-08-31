@@ -12,6 +12,11 @@ export * from './world-first/casi-engine';
 export * from './world-first/hemodynamic-depletion-engine';
 export * from './world-first/fhir-qr-emergency-tag';
 
+export * from './clinical/vasomotor-thermal-engine';
+export * from './clinical/afib-arrhythmia-detector';
+export * from './engineering/adaptive-temporal-resampler';
+export * from './investor/cpt-reimbursement-engine';
+
 export * from './triage/news2-triage';
 export * from './triage/qsofa-sepsis';
 export * from './triage/who-imci';
