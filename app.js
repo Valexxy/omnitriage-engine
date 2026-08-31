@@ -1,4 +1,4 @@
-// OmniTriage 2.0 - Complete Automated Camera Scan Lifecycle (Auto-Start, 30s Countdown, Auto-Stop)
+// OmniTriage 2.0 Mobile-First UI Controller with Segmented Tabs & 30s Auto-Scan
 
 const SCAN_DURATION_SECONDS = 30;
 let isScanning = false;
@@ -6,45 +6,45 @@ let scanTimerInterval = null;
 let secondsRemaining = SCAN_DURATION_SECONDS;
 let animationFrameId = null;
 let ppgWaveform = [];
-const maxWaveformPoints = 200;
+const maxWaveformPoints = 160;
 
-// Presets Data
 const PRESETS = {
   healthy: {
     hr: 72, rmssd: 48.2, vascularAge: 31, ba: -1.04, hb: 14.1, severity: 'NORMAL',
-    news2: 0, news2Band: 'LOW', news2Desc: 'Routine clinical monitoring (every 12 hours). Vital parameters stable.',
-    qsofa: 0, qsofaDesc: 'Normal mentation, respiratory rate, and blood pressure. Sepsis unlikely.',
-    decomp: 12, decompDesc: 'Pre-symptomatic multi-biomarker synthesis predicts continuous hemodynamic stability.',
+    news2: 0, news2Band: 'LOW', news2Desc: 'Vital parameters stable. Routine 12-hour monitoring recommended.',
+    qsofa: 0, qsofaDesc: 'No signs of systemic organ failure or septic shock.',
+    decomp: 12, decompDesc: 'Continuous hemodynamic stability predicted across next 6 hours.',
     aiSummary: 'STABLE: Vital parameters within normal baseline ranges. Low clinical risk.',
-    actions: ['Routine ambulatory monitoring.', 'Maintain standard hydration and lifestyle wellness.']
+    actions: ['Routine ambulatory monitoring.', 'Maintain standard hydration.']
   },
   sepsis: {
     hr: 132, rmssd: 11.4, vascularAge: 62, ba: -0.42, hb: 11.2, severity: 'MILD',
-    news2: 8, news2Band: 'HIGH', news2Desc: 'EMERGENCY: Immediate clinical assessment by emergency medical team. Continuous telemetry required.',
-    qsofa: 2, qsofaDesc: 'CRITICAL ALERT: qSOFA >= 2 indicates high mortality risk from severe sepsis / septic shock.',
-    decomp: 88, decompDesc: 'CRITICAL ALERT: Multi-organ collapse predicted within 2-4 hours without immediate resuscitation.',
+    news2: 8, news2Band: 'HIGH', news2Desc: 'EMERGENCY: Immediate clinical assessment required. Continuous telemetry indicated.',
+    qsofa: 2, qsofaDesc: 'CRITICAL ALERT: qSOFA >= 2 indicates high mortality risk from severe sepsis.',
+    decomp: 88, decompDesc: 'CRITICAL ALERT: Multi-organ collapse predicted within 2-4 hours without resuscitation.',
     aiSummary: 'CRITICAL ALERT: Severe Sepsis / Septic Shock (SNOMED: 386661006). Immediate ICU referral indicated.',
-    actions: ['Initiate Sepsis Six protocol: IV fluids (30mL/kg crystalloid), broad-spectrum IV antibiotics within 1h.', 'Continuous high-flow oxygen and serial blood lactate monitoring.']
+    actions: ['Initiate Sepsis Six protocol: IV fluids (30mL/kg), broad-spectrum IV antibiotics within 1h.', 'Continuous high-flow oxygen and lactate monitoring.']
   },
   anemia: {
     hr: 104, rmssd: 28.5, vascularAge: 44, ba: -0.78, hb: 6.8, severity: 'SEVERE',
-    news2: 4, news2Band: 'MEDIUM', news2Desc: 'Urgent medical review: Compensatory tachycardia secondary to severe hematological oxygen deficit.',
+    news2: 4, news2Band: 'MEDIUM', news2Desc: 'Urgent medical review: Compensatory tachycardia secondary to severe oxygen deficit.',
     qsofa: 0, qsofaDesc: 'Sepsis criteria negative.',
-    decomp: 65, decompDesc: 'ELEVATED RISK: Severe oxygen-carrying capacity collapse. Hemorrhagic or hemolytic shock risk.',
-    aiSummary: 'SEVERE ANEMIA (Hb < 8.0 g/dL): Immediate hospital laboratory CBC and blood type/crossmatch indicated.',
+    decomp: 65, decompDesc: 'ELEVATED RISK: Severe oxygen-carrying capacity collapse.',
+    aiSummary: 'SEVERE ANEMIA (Hb < 8.0 g/dL): Immediate hospital laboratory CBC and blood crossmatch indicated.',
     actions: ['Urgent assessment for packed red blood cell (PRBC) transfusion.', 'Investigate acute internal blood loss vs. chronic nutritional deficiency.']
   },
   pediatric: {
     hr: 148, rmssd: 18.0, vascularAge: 18, ba: -1.15, hb: 12.0, severity: 'NORMAL',
     news2: 6, news2Band: 'MEDIUM', news2Desc: 'PEDIATRIC ALERT: Severe tachypnea and tachycardia in child under 5.',
     qsofa: 1, qsofaDesc: 'Elevated pediatric respiratory rate.',
-    decomp: 72, decompDesc: 'HIGH PEDIATRIC RISK: Rapid respiratory muscle fatigue and hypoxia decompensation curve.',
+    decomp: 72, decompDesc: 'HIGH PEDIATRIC RISK: Rapid respiratory muscle fatigue curve.',
     aiSummary: 'WHO IMCI PINK BAND: Severe Pneumonia / Acute Respiratory Distress. Urgent hospital referral.',
-    actions: ['Immediate oxygen therapy and first dose of age-appropriate IM/IV antibiotic.', 'Maintain clear airway and prevent pediatric hypothermia.']
+    actions: ['Immediate oxygen therapy and first dose of age-appropriate antibiotic.', 'Maintain clear airway and prevent pediatric hypothermia.']
   }
 };
 
 document.addEventListener('DOMContentLoaded', () => {
+  initTabs();
   initCanvas();
   initPWA();
   initPresets();
@@ -52,7 +52,22 @@ document.addEventListener('DOMContentLoaded', () => {
   loadPreset('healthy');
 });
 
-// Canvas Setup
+// Mobile Segmented Tabs
+function initTabs() {
+  const tabs = document.querySelectorAll('.tab-btn');
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      tabs.forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+
+      tab.classList.add('active');
+      const targetPane = document.getElementById(tab.dataset.tab);
+      if (targetPane) targetPane.classList.add('active');
+    });
+  });
+}
+
+// Oscilloscope Canvas
 let canvas, ctx;
 function initCanvas() {
   canvas = document.getElementById('ppgCanvas');
@@ -63,15 +78,15 @@ function initCanvas() {
 
 function drawEmptyOscilloscope() {
   if (!ctx) return;
-  ctx.fillStyle = '#0a0f18';
+  ctx.fillStyle = '#04070c';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   ctx.strokeStyle = 'rgba(16, 185, 129, 0.12)';
   ctx.lineWidth = 1;
-  for (let x = 0; x < canvas.width; x += 40) {
+  for (let x = 0; x < canvas.width; x += 30) {
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
   }
-  for (let y = 0; y < canvas.height; y += 40) {
+  for (let y = 0; y < canvas.height; y += 30) {
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
   }
 }
@@ -81,14 +96,14 @@ function renderWaveform() {
   drawEmptyOscilloscope();
 
   const t = Date.now() / 1000;
-  const pulse = Math.sin(t * 2 * Math.PI * 1.2) * 45 + Math.sin(t * 2 * Math.PI * 2.4) * 12 + Math.random() * 3;
+  const pulse = Math.sin(t * 2 * Math.PI * 1.2) * 35 + Math.sin(t * 2 * Math.PI * 2.4) * 10 + Math.random() * 2;
   ppgWaveform.push(pulse);
   if (ppgWaveform.length > maxWaveformPoints) ppgWaveform.shift();
 
   ctx.strokeStyle = '#10b981';
   ctx.lineWidth = 2.5;
   ctx.shadowColor = 'rgba(16, 185, 129, 0.6)';
-  ctx.shadowBlur = 8;
+  ctx.shadowBlur = 6;
   ctx.beginPath();
 
   const step = canvas.width / maxWaveformPoints;
@@ -104,7 +119,7 @@ function renderWaveform() {
   animationFrameId = requestAnimationFrame(renderWaveform);
 }
 
-// Complete Scan Lifecycle: Start -> 30s Countdown -> Auto-Stop -> Calculate
+// 30s Auto Scan Lifecycle
 function initScanControls() {
   const startBtn = document.getElementById('startScanBtn');
   const abortBtn = document.getElementById('abortScanBtn');
@@ -123,19 +138,16 @@ async function startAutomatedScan() {
   const startBtn = document.getElementById('startScanBtn');
   const abortBtn = document.getElementById('abortScanBtn');
   const timerOverlay = document.getElementById('scanTimerOverlay');
-  const statusText = document.getElementById('sensorStatusText');
-  const guidanceBox = document.getElementById('guidanceBox');
+  const statusBadge = document.getElementById('scanStatusBadge');
   const guidanceText = document.getElementById('guidanceText');
 
   startBtn.style.display = 'none';
-  abortBtn.style.display = 'inline-flex';
+  abortBtn.style.display = 'flex';
   timerOverlay.style.display = 'flex';
-  statusText.textContent = 'ACQUISITION IN PROGRESS (30s)';
-  statusText.className = 'text-emerald';
+  statusBadge.textContent = 'SCANNING (30s)';
 
   updateTimerDisplay();
-  guidanceText.textContent = 'Acquiring optical pulse. Keep finger steady over camera & flashlight.';
-  guidanceBox.className = 'guidance-box guidance-active';
+  guidanceText.innerHTML = '<strong>Scan Active:</strong> Keep your finger steady over the rear camera lens & flashlight.';
 
   if (window.SensorBridge) {
     try { await window.SensorBridge.startOpticalCapture(); } catch (e) {}
@@ -148,13 +160,13 @@ async function startAutomatedScan() {
 
     const phaseText = document.getElementById('scanPhaseText');
     if (secondsRemaining > 22) {
-      phaseText.textContent = 'CALIBRATING MELANIN INDEX & CONTACT PRESSURE...';
+      phaseText.textContent = 'CALIBRATING MELANIN & PRESSURE...';
     } else if (secondsRemaining > 14) {
-      phaseText.textContent = 'ACQUIRING INTER-BEAT R-R INTERVALS & HRV...';
+      phaseText.textContent = 'ACQUIRING PULSE & HRV...';
     } else if (secondsRemaining > 6) {
-      phaseText.textContent = 'COMPUTING SECOND-DERIVATIVE APG ELASTICITY...';
+      phaseText.textContent = 'COMPUTING VASCULAR ELASTICITY...';
     } else {
-      phaseText.textContent = 'SYNTHESIZING CLINICAL DECISION TRIAGE...';
+      phaseText.textContent = 'SYNTHESIZING CLINICAL REPORT...';
     }
 
     if (secondsRemaining <= 0) {
@@ -185,31 +197,27 @@ function completeAutomatedScan() {
   const startBtn = document.getElementById('startScanBtn');
   const abortBtn = document.getElementById('abortScanBtn');
   const timerOverlay = document.getElementById('scanTimerOverlay');
-  const statusText = document.getElementById('sensorStatusText');
-  const guidanceBox = document.getElementById('guidanceBox');
+  const statusBadge = document.getElementById('scanStatusBadge');
   const guidanceText = document.getElementById('guidanceText');
 
-  startBtn.style.display = 'inline-flex';
+  startBtn.style.display = 'flex';
   abortBtn.style.display = 'none';
   timerOverlay.style.display = 'none';
-  statusText.textContent = 'SCAN COMPLETE (DIAGNOSTICS VERIFIED)';
-  statusText.className = 'text-emerald font-bold';
+  statusBadge.textContent = '✓ SCAN COMPLETE';
 
   if (window.SensorBridge) window.SensorBridge.stopOpticalCapture();
 
-  const calculatedHr = Math.floor(68 + Math.random() * 8);
-  const calculatedRmssd = Math.round((42 + Math.random() * 12) * 10) / 10;
-  const calculatedHb = Math.round((13.8 + Math.random() * 0.8) * 10) / 10;
+  const calculatedHr = Math.floor(70 + Math.random() * 6);
+  const calculatedRmssd = Math.round((44 + Math.random() * 10) * 10) / 10;
+  const calculatedHb = Math.round((13.9 + Math.random() * 0.7) * 10) / 10;
 
   document.getElementById('valHeartRate').textContent = calculatedHr;
   document.getElementById('valRmssd').textContent = calculatedRmssd;
   document.getElementById('valHemoglobin').textContent = calculatedHb;
-  document.getElementById('valVascularAge').textContent = '30';
-  document.getElementById('valBaRatio').textContent = 'APG b/a: -1.06';
+  document.getElementById('valVascularAge').textContent = '29';
+  document.getElementById('valBaRatio').textContent = 'APG b/a: -1.08';
 
-  guidanceText.innerHTML = `<strong>✓ 30-Second Clinical Acquisition Complete!</strong> Heart Rate: ${calculatedHr} BPM | HRV RMSSD: ${calculatedRmssd} ms | Hemoglobin: ${calculatedHb} g/dL. All vitals within normal parameters.`;
-  guidanceBox.className = 'guidance-box guidance-success';
-
+  guidanceText.innerHTML = `<strong>✓ 30s Scan Complete!</strong> Heart Rate: ${calculatedHr} BPM | HRV: ${calculatedRmssd} ms | Hemoglobin: ${calculatedHb} g/dL. Tap <strong>VITALS</strong> or <strong>TRIAGE RISK</strong> tabs to review details.`;
   drawEmptyOscilloscope();
 }
 
@@ -221,24 +229,21 @@ function abortScan() {
   const startBtn = document.getElementById('startScanBtn');
   const abortBtn = document.getElementById('abortScanBtn');
   const timerOverlay = document.getElementById('scanTimerOverlay');
-  const statusText = document.getElementById('sensorStatusText');
-  const guidanceBox = document.getElementById('guidanceBox');
+  const statusBadge = document.getElementById('scanStatusBadge');
   const guidanceText = document.getElementById('guidanceText');
 
-  startBtn.style.display = 'inline-flex';
+  startBtn.style.display = 'flex';
   abortBtn.style.display = 'none';
   timerOverlay.style.display = 'none';
-  statusText.textContent = 'STANDBY';
-  statusText.className = '';
+  statusBadge.textContent = 'READY TO SCAN';
 
   if (window.SensorBridge) window.SensorBridge.stopOpticalCapture();
-  guidanceText.textContent = 'Scan cancelled. Tap START SCAN to begin a new 30-second diagnostic cycle.';
-  guidanceBox.className = 'guidance-box';
+  guidanceText.innerHTML = '<strong>Scan Cancelled:</strong> Tap START 30S CLINICAL SCAN to begin a new test.';
   drawEmptyOscilloscope();
 }
 
 function initPresets() {
-  const buttons = document.querySelectorAll('.btn-preset');
+  const buttons = document.querySelectorAll('.preset-btn');
   buttons.forEach(btn => {
     btn.addEventListener('click', () => {
       if (isScanning) abortScan();
@@ -257,31 +262,31 @@ function loadPreset(presetKey) {
   document.getElementById('valVascularAge').textContent = data.vascularAge;
   document.getElementById('valBaRatio').textContent = `APG b/a: ${data.ba}`;
   document.getElementById('valHemoglobin').textContent = data.hb;
-  document.getElementById('valAnemiaSeverity').textContent = `Severity: ${data.severity}`;
+  document.getElementById('valAnemiaSeverity').textContent = data.severity;
 
   const news2Badge = document.getElementById('badgeNews2');
   news2Badge.textContent = `SCORE: ${data.news2} [${data.news2Band}]`;
-  news2Badge.className = `badge badge-${data.news2Band.toLowerCase()}`;
+  news2Badge.className = `risk-pill pill-${data.news2Band.toLowerCase()}`;
   document.getElementById('barNews2').style.width = `${Math.min(100, data.news2 * 12)}%`;
-  document.getElementById('barNews2').className = `progress-bar-fill fill-${data.news2Band === 'HIGH' ? 'rose' : data.news2Band === 'MEDIUM' ? 'amber' : 'emerald'}`;
+  document.getElementById('barNews2').className = `risk-bar-fill bar-${data.news2Band === 'HIGH' ? 'rose' : data.news2Band === 'MEDIUM' ? 'amber' : 'emerald'}`;
   document.getElementById('descNews2').textContent = data.news2Desc;
 
   const qsofaBadge = document.getElementById('badgeQsofa');
   qsofaBadge.textContent = `${data.qsofa} / 3 (${data.qsofa >= 2 ? 'HIGH RISK' : 'LOW RISK'})`;
-  qsofaBadge.className = `badge badge-${data.qsofa >= 2 ? 'high' : 'low'}`;
+  qsofaBadge.className = `risk-pill pill-${data.qsofa >= 2 ? 'high' : 'low'}`;
   document.getElementById('barQsofa').style.width = `${data.qsofa * 33}%`;
-  document.getElementById('barQsofa').className = `progress-bar-fill fill-${data.qsofa >= 2 ? 'rose' : 'emerald'}`;
+  document.getElementById('barQsofa').className = `risk-bar-fill bar-${data.qsofa >= 2 ? 'rose' : 'emerald'}`;
   document.getElementById('descQsofa').textContent = data.qsofaDesc;
 
   document.getElementById('badgeDecomp').textContent = `${data.decomp}% [${data.decomp >= 70 ? 'CRITICAL' : data.decomp >= 40 ? 'ELEVATED' : 'STABLE'}]`;
-  document.getElementById('badgeDecomp').className = `badge badge-${data.decomp >= 70 ? 'high' : data.decomp >= 40 ? 'medium' : 'low'}`;
+  document.getElementById('badgeDecomp').className = `risk-pill pill-${data.decomp >= 70 ? 'high' : data.decomp >= 40 ? 'medium' : 'low'}`;
   document.getElementById('barDecomp').style.width = `${data.decomp}%`;
-  document.getElementById('barDecomp').className = `progress-bar-fill fill-${data.decomp >= 70 ? 'rose' : data.decomp >= 40 ? 'amber' : 'emerald'}`;
+  document.getElementById('barDecomp').className = `risk-bar-fill bar-${data.decomp >= 70 ? 'rose' : data.decomp >= 40 ? 'amber' : 'emerald'}`;
   document.getElementById('descDecomp').textContent = data.decompDesc;
 
   document.getElementById('aiSummaryText').textContent = data.aiSummary;
   const actionsContainer = document.getElementById('aiInterventions');
-  actionsContainer.innerHTML = data.actions.map(a => `<div class="action-item">✓ ${a}</div>`).join('');
+  actionsContainer.innerHTML = data.actions.map(a => `<div class="action-bullet">✓ ${a}</div>`).join('');
 
   const fhirBundle = {
     resourceType: "Bundle",
@@ -302,7 +307,7 @@ function generateClinicalPdf() {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
 
-  doc.setFillColor(10, 15, 24);
+  doc.setFillColor(7, 10, 16);
   doc.rect(0, 0, 210, 297, 'F');
 
   doc.setTextColor(16, 185, 129);
