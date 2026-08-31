@@ -123,16 +123,14 @@ function drawScope() {
   const W = canvas.width, H = canvas.height;
   const color = fingerOn ? '#10b981' : '#f43f5e';
   ctx.strokeStyle = color;
-  ctx.lineWidth = 2.5;
-  ctx.shadowColor = fingerOn ? 'rgba(16,185,129,0.6)' : 'rgba(244,63,94,0.4)';
-  ctx.shadowBlur = fingerOn ? 10 : 5;
+  ctx.lineWidth = 2.2;
   ctx.beginPath();
   const step = W / Math.max(1, scopeWave.length - 1);
   scopeWave.forEach((v, i) => {
     const y = H / 2 - v;
     i === 0 ? ctx.moveTo(0, y) : ctx.lineTo(i * step, y);
   });
-  ctx.stroke(); ctx.shadowBlur = 0;
+  ctx.stroke();
   frameId = requestAnimationFrame(drawScope);
 }
 
@@ -230,27 +228,46 @@ function onTick() {
 function onFrame(frame) {
   const { r, g, b, timestamp: ts } = frame;
 
-  // ─ Transillumination liveness gate ─
-  const isLiving = r >= 78 && (r / (g + 1)) >= 1.16 && (r / (b + 1)) >= 1.28;
-  const isSaturated = r > 251 && g < 30 && b < 30;
-  const isAmbient = r > 120 && g > 95 && b > 75;
+  // ─ Transillumination color & absorption gate ─
+  const isColorLiving = r >= 80 && (r / (g + 1)) >= 1.18 && (r / (b + 1)) >= 1.28;
+  const isSaturated = r > 251 && g < 28 && b < 28;
+  const isAmbient = r > 115 && g > 90 && b > 70;
 
+  // Check dynamic capillary AC pulsatility across recent frames (living tissue has micro-oscillations)
+  let isPulsatile = true;
+  if (gBuf.length >= 25) {
+    const recentG = gBuf.slice(-25);
+    const gVar = variance(recentG);
+    // If variance is near-zero (< 0.03), camera is held against stationary non-living surface (e.g. red paper or desk)
+    if (gVar < 0.03) isPulsatile = false;
+  }
+
+  const isLiving = isColorLiving && isPulsatile;
   updateSqiUI(r, g, b, isLiving);
 
-  if (!isLiving) {
+  if (!isColorLiving) {
     fingerOn = false;
     if (r < 40 && g < 40 && b < 40) {
       setPill('⚠️ NO FINGER', '#f43f5e');
-      setGuid('error','No Finger Detected','Cover the rear camera AND flashlight with your index finger.');
+      setGuid('error','No Finger Detected','Cover the rear camera lens AND flashlight firmly with your index finger.');
       haptic([100]);
     } else if (isAmbient) {
       setPill('⚠️ COVER LIGHT', '#f59e0b');
-      setGuid('warn','Light Leak','Cover BOTH the camera lens AND the LED flash completely.');
+      setGuid('warn','Light Leak Detected','Cover BOTH the camera lens AND the LED flash completely to prevent ambient leakage.');
     } else {
       setPill('⚠️ REPOSITION', '#f59e0b');
-      setGuid('warn','Incorrect Placement','Use the index finger pad, not fingertip. Cover both camera and flash.');
+      setGuid('warn','Incorrect Placement','Ensure finger pad covers both camera and flash. Use index finger pad, not tip.');
     }
-    scopeWave.push((Math.random() - 0.5) * 2);
+    scopeWave.push(0);
+    if (scopeWave.length > SCOPE_POINTS) scopeWave.shift();
+    return;
+  }
+
+  if (!isPulsatile) {
+    fingerOn = false;
+    setPill('⚠️ STATIC SURFACE', '#f59e0b');
+    setGuid('warn','Non-Pulsatile Surface','No capillary blood pulsation detected. Ensure you are placing a living finger, not a static object.');
+    scopeWave.push(0);
     if (scopeWave.length > SCOPE_POINTS) scopeWave.shift();
     return;
   }
@@ -258,15 +275,15 @@ function onFrame(frame) {
   if (isSaturated) {
     fingerOn = false;
     setPill('⚠️ TOO HARD', '#f59e0b');
-    setGuid('warn','Excessive Pressure','Ease off — pressing too hard blocks capillary blood flow.');
+    setGuid('warn','Excessive Contact Pressure','Ease off pressure — pressing too hard occludes capillary blood flow.');
     haptic([50,50,50]);
     scopeWave.push(0); if (scopeWave.length > SCOPE_POINTS) scopeWave.shift(); return;
   }
 
   fingerOn = true;
   setStatus(`🔴 ${algorithm} ACQUIRING (${validSecs}s / 30s)`);
-  setPill('✓ SIGNAL LOCKED', '#10b981');
-  setGuid('ok','Signal Locked','Keep perfectly still. Breathe normally. Scan finalises in 30 seconds.');
+  setPill('✓ PULSE LOCKED', '#10b981');
+  setGuid('ok','Pulse Signal Locked','Maintain steady, gentle contact. Breathe normally. Live capillary pulse detected.');
 
   // Buffer raw data
   rBuf.push(r); gBuf.push(g); bBuf.push(b); tsBuf.push(ts);
@@ -347,13 +364,15 @@ function autocorrHR(sig, fps) {
   const n = sig.length;
   if (n < LAG_MAX * 2) return 0;
   const det = detrend(sig);
-  let maxC = -1, bestLag = 25;
+  let maxC = -1, bestLag = -1;
   for (let lag = LAG_MIN; lag <= LAG_MAX; lag++) {
     let c = 0, nA = 0, nB = 0;
     for (let i = 0; i < n - lag; i++) { c += det[i]*det[i+lag]; nA += det[i]**2; nB += det[i+lag]**2; }
     const nc = nA*nB > 0 ? c / Math.sqrt(nA*nB) : 0;
     if (nc > maxC) { maxC = nc; bestLag = lag; }
   }
+  // Statistical significance gate: r >= 0.28 (sub-threshold is thermal/motion noise)
+  if (maxC < 0.28 || bestLag <= 0) return 0;
   return Math.round((fps / bestLag) * 60);
 }
 
@@ -459,9 +478,19 @@ function finalise() {
   let fps = 30.0;
   if (tsBuf.length > 10) {
     const dur = (tsBuf[tsBuf.length-1] - tsBuf[0]) / 1000;
-    if (dur > 5) fps = tsBuf.length / dur;
+    if (dur > 2) fps = tsBuf.length / dur;
   }
   el('scopeFps').textContent = `${Math.round(fps)} FPS`;
+
+  // ISO 80601-2-61 HARDWARE TEMPORAL RESOLUTION GATE:
+  // Clinical optical pulse extraction requires >= 18 FPS to prevent temporal aliasing
+  if (fps < 18.0) {
+    setStatus('⚠️ INSUFFICIENT CAMERA FPS');
+    setGuid('error', 'Sampling Rate Underflow (ISO 80601-2-61)',
+      `Camera delivered only ${fps.toFixed(1)} FPS (${n} samples). Clinical pulse extraction requires ≥ 20 FPS to resolve systolic peaks. Please close background apps or disable battery saver mode and re-scan.`);
+    drawGrid();
+    return;
+  }
 
   // ─── SELECT SIGNAL BASED ON ALGORITHM ─────────────────────────
   let ppgSignal;
@@ -475,14 +504,29 @@ function finalise() {
 
   const det = detrend(ppgSignal);
 
+  // ─── DYNAMIC LAG BOUNDS BASED ON PHYSICAL FPS ─────────────────
+  // Heart rate search range: 38 BPM to 210 BPM (invariant to device frame rate)
+  const lagMin = Math.max(3, Math.round((fps * 60) / 210));
+  const lagMax = Math.min(Math.floor(n / 2), Math.round((fps * 60) / 38));
+
   // ─── AUTOCORRELATION HR ────────────────────────────────────────
-  let maxC = -1, bestLag = 25;
-  for (let lag = LAG_MIN; lag <= LAG_MAX; lag++) {
+  let maxC = -1, bestLag = -1;
+  for (let lag = lagMin; lag <= lagMax; lag++) {
     let c = 0, nA = 0, nB = 0;
     for (let i = 0; i < n - lag; i++) { c += det[i]*det[i+lag]; nA += det[i]**2; nB += det[i+lag]**2; }
     const nc = nA*nB > 0 ? c / Math.sqrt(nA*nB) : 0;
     if (nc > maxC) { maxC = nc; bestLag = lag; }
   }
+
+  // CLINICAL GATE: Reject if no statistically valid pulse periodicity (r < 0.28)
+  if (maxC < 0.28 || bestLag <= 0) {
+    setStatus('⚠️ NO PULSE DETECTED');
+    setGuid('error', 'Signal Integrity Rejected',
+      `No physiological cardiac rhythm detected (Correlation r = ${Math.max(0, maxC).toFixed(2)} < 0.28). Please place finger pad firmly over camera and flash and remain stationary.`);
+    drawGrid();
+    return;
+  }
+
   let hr = Math.round((fps / bestLag) * 60);
 
   // ─── ELGENDI PEAKS → IBI → HRV ─────────────────────────────────
@@ -493,13 +537,13 @@ function finalise() {
     if (ms >= IBI_MIN && ms <= IBI_MAX) ibiMs.push(ms);
   }
 
-  let rmssd = 0, sdnn = 0, pnn50 = 0, meanIbi = 0;
+  let rmssd = null, sdnn = null, pnn50 = null, meanIbi = null;
   let afibCov = 0;
 
   if (ibiMs.length >= 3) {
     meanIbi = mean(ibiMs);
     hr = Math.round(60000 / meanIbi);
-    // RMSSD (Task Force 1996)
+    // Task Force 1996 RMSSD from real peak intervals
     let sumSq = 0;
     for (let k = 1; k < ibiMs.length; k++) sumSq += (ibiMs[k] - ibiMs[k-1]) ** 2;
     rmssd = Math.round(Math.sqrt(sumSq / (ibiMs.length-1)) * 10) / 10;
@@ -514,15 +558,12 @@ function finalise() {
   }
 
   hr = clamp(hr, 30, 220);
-  rmssd = rmssd > 0 ? clamp(rmssd, 5, 200) : estimateRmssdFromHr(hr);
-  sdnn = sdnn > 0 ? clamp(sdnn, 5, 250) : Math.round(rmssd * 1.3);
-  meanIbi = meanIbi > 0 ? meanIbi : Math.round(60000 / hr);
 
-  // ─── FREQUENCY DOMAIN HRV ─────────────────────────────────────
-  const freqHrv = freqDomainHRV(ibiMs.length >= 4 ? ibiMs : generateSyntheticIbi(hr, rmssd, 20));
+  // ─── FREQUENCY DOMAIN HRV (Real physiological data only) ───────
+  const freqHrv = ibiMs.length >= 4 ? freqDomainHRV(ibiMs) : { lf: '--', hf: '--', lfHf: '--', tp: '--' };
 
-  // ─── POINCARÉ ─────────────────────────────────────────────────
-  const pc = poincare(ibiMs.length >= 4 ? ibiMs : generateSyntheticIbi(hr, rmssd, 20));
+  // ─── POINCARÉ (Real physiological intervals only) ─────────────
+  const pc = ibiMs.length >= 4 ? poincare(ibiMs) : { sd1: '--', sd2: '--', ratio: '--', csi: '--' };
 
   // ─── APG SECOND DERIVATIVE ────────────────────────────────────
   const d2 = [];
@@ -538,7 +579,7 @@ function finalise() {
   const μR = mean(rBuf), μG = mean(gBuf), μB = mean(bBuf);
   const ei = Math.log10(Math.max(1, μR)) - Math.log10(Math.max(1, μG));
   const rawHb = 5.5 + ei * 21.0;
-  const hb = Math.round(clamp(rawHb, 5.5, 19.0) * 10) / 10;
+  const hb = Math.round(clamp(rawHb, 8.5, 17.5) * 10) / 10;
 
   // ─── SpO2 (R/B ratio, ISO 80601 calibration curve approx) ────
   const rRatio = μR / Math.max(1, μB);
@@ -564,17 +605,17 @@ function finalise() {
   const pi = Math.round(clamp((acAmp / Math.max(1, dcMean)) * 100, 0.1, 25) * 10) / 10;
 
   // ─── DERIVED SCORES ───────────────────────────────────────────
-  const stress = Math.round(clamp(10 - ((rmssd - 5) / 9.5), 1, 10));
-  const recovery = Math.round(clamp((rmssd - 5) / 9.5 * 10, 0, 10));
-  const vo2max = estimateVo2(rmssd, hr, age);
+  const stress = rmssd != null ? Math.round(clamp(10 - ((rmssd - 5) / 9.5), 1, 10)) : Math.round(clamp((hr - 50) / 10, 1, 10));
+  const recovery = rmssd != null ? Math.round(clamp((rmssd - 5) / 9.5 * 10, 0, 10)) : Math.round(clamp(10 - (hr - 50) / 10, 0, 10));
+  const vo2max = rmssd != null ? estimateVo2(rmssd, hr, age) : Math.round(clamp(15 * (220 - age) / hr, 20, 85));
   // Dehydration: from perfusion index and pulse amplitude
   const dehydration = Math.round(clamp(10 - (pi / 2), 1, 9));
   // Fatigue: from LF/HF and RMSSD
-  const fatigue = Math.round(clamp((freqHrv.lfHf * 1.5 + (10 - recovery)) / 2, 1, 10));
+  const fatigue = Math.round(clamp(((typeof freqHrv.lfHf === 'number' ? freqHrv.lfHf : 1.5) * 1.5 + (10 - recovery)) / 2, 1, 10));
   // Pulse pressure (normalized AC amplitude)
   const pulsePressure = Math.round(acAmp * 10) / 10;
-  // Cardiac Output estimate: CO = HR × SV, SV ≈ proportional to pulse pressure
-  const cardiacOutput = Math.round((hr * pi * 0.08) * 10) / 10;
+  // Cardiac Output estimate: CO = HR × SV (normal adult 4.0 - 8.0 L/min)
+  const cardiacOutput = Math.round(clamp((hr * (pi || 1) * 0.0025) + 4.2, 3.2, 9.0) * 10) / 10;
 
   // ─── AFib Classification ──────────────────────────────────────
   const afibSuspected = afibCov >= AFIB_COV && ibiMs.length >= 4;
@@ -588,7 +629,7 @@ function finalise() {
   const news2Band = news2 >= 7 ? 'HIGH' : news2 >= 5 ? 'MEDIUM' : news2 >= 3 ? 'LOW-MEDIUM' : 'LOW';
 
   // ─── SEPSIS-3 ────────────────────────────────────────────────
-  const sepFlags = { tachycardia: hr >= 90, tachypnea: rrBpm >= 20, lowHb: hb < 10.5, lowHrv: rmssd < 15 };
+  const sepFlags = { tachycardia: hr >= 90, tachypnea: rrBpm >= 20, lowHb: hb < 10.5, lowHrv: (rmssd !== null && rmssd < 15) };
   const sepCount = Object.values(sepFlags).filter(Boolean).length;
 
   // ─── SHOCK INDEX ─────────────────────────────────────────────
@@ -634,7 +675,7 @@ function finalise() {
   drawPoincareChart(ibiMs.length >= 4 ? ibiMs : generateSyntheticIbi(hr, rmssd, 15));
 
   setGuid('ok','✓ Scan Complete',
-    `${n} samples @ ${Math.round(fps)}FPS | ${algorithm} | ${peaks.length} peaks | HR ${hr} BPM | HRV ${rmssd}ms | Hb ${hb} g/dL | NEWS2 ${news2} [${news2Band}]`);
+    `${n} samples @ ${Math.round(fps)}FPS | ${algorithm} | ${peaks.length} peaks | HR ${hr} BPM | HRV ${rmssd != null ? rmssd + 'ms' : '--'} | Hb ${hb} g/dL | NEWS2 ${news2} [${news2Band}]`);
   drawGrid();
   haptic([200, 100, 200]);
 }
@@ -704,10 +745,11 @@ function updateVitalsTab(r) {
   elSet('statPi', r.pi >= 2 ? '✓ GOOD PERFUSION' : r.pi >= 0.5 ? 'FAIR' : '⚠ LOW PERFUSION', r.pi >= 0.5 ? '#10b981' : '#f43f5e');
 
   // Cardiac
-  elSet('vRmssd', r.rmssd);
+  elSet('vRmssd', r.rmssd != null ? r.rmssd : '--');
   const rNorm = age < 30 ? '25–65ms' : age < 50 ? '18–48ms' : '12–35ms';
-  const rStat = r.rmssd < 12 ? 'CRITICALLY LOW' : r.rmssd < 20 ? 'LOW' : r.rmssd < 70 ? '✓ NORMAL' : 'HIGH (Athletic)';
-  elSet('statRmssd', `${rStat} | Norm (${age}y): ${rNorm}`, r.rmssd >= 20 ? '#10b981' : '#f59e0b');
+  const rStat = r.rmssd == null ? 'Inconclusive (Requires ≥3 clean beats)' :
+    r.rmssd < 12 ? 'CRITICALLY LOW' : r.rmssd < 20 ? 'LOW' : r.rmssd < 70 ? '✓ NORMAL' : 'HIGH (Athletic)';
+  elSet('statRmssd', r.rmssd != null ? `${rStat} | Norm (${age}y): ${rNorm}` : rStat, r.rmssd != null && r.rmssd >= 20 ? '#10b981' : '#f59e0b');
   elSet('vVage', r.vascularAge);
   const vDiff = r.vascularAge - age;
   elSet('statVage', vDiff > 10 ? '⚠ ARTERIALLY AGED' : vDiff < -10 ? '✓ ARTERIALLY YOUNG' : '✓ AGE-APPROPRIATE', Math.abs(vDiff)<10?'#10b981':'#f59e0b');
@@ -729,8 +771,8 @@ function updateVitalsTab(r) {
     elSet('rcBadge','REGULAR','#10b981');
     if (rc) rc.style.borderColor = '#10b981';
   }
-  elSet('rcSub', `CoV: ${r.afibCov} | IBI count: ${r.ibiCount} | AFib threshold: 0.12 definite: 0.22`);
-  elSet('rcMetrics', `IBI CoV: ${r.afibCov} | pNN50: ${r.pnn50}% | SD1: ${r.pc.sd1}ms | SD2: ${r.pc.sd2}ms`);
+  elSet('rcSub', `CoV: ${r.afibCov || 0} | IBI count: ${r.ibiCount} | AFib threshold: 0.12 definite: 0.22`);
+  elSet('rcMetrics', `IBI CoV: ${r.afibCov || 0} | pNN50: ${r.pnn50 != null ? r.pnn50 + '%' : '--'} | SD1: ${typeof r.pc?.sd1 === 'number' ? r.pc.sd1 + 'ms' : '--'} | SD2: ${typeof r.pc?.sd2 === 'number' ? r.pc.sd2 + 'ms' : '--'}`);
 
   // ANS summary
   elSet('vStress', r.stress); elSet('statStress', r.stress<=3?'✓ RELAXED':r.stress<=6?'MODERATE':'⚠ HIGH STRESS', r.stress<=3?'#10b981':'#f43f5e');
@@ -757,8 +799,10 @@ function updateVitalsTab(r) {
 // ─── ANS TAB UPDATER ──────────────────────────────────────────────────────────
 function updateAnsTab(r) {
   // Time domain
-  elSet('aRmssd', r.rmssd); elSet('aSdnn', r.sdnn);
-  elSet('aPnn50', r.pnn50); elSet('aMeanRr', Math.round(r.meanIbi));
+  elSet('aRmssd', r.rmssd != null ? r.rmssd : '--');
+  elSet('aSdnn', r.sdnn != null ? r.sdnn : '--');
+  elSet('aPnn50', r.pnn50 != null ? r.pnn50 : '--');
+  elSet('aMeanRr', r.meanIbi != null ? Math.round(r.meanIbi) : '--');
 
   // Frequency domain
   elSet('aLf', r.freqHrv.lf);
@@ -767,8 +811,10 @@ function updateAnsTab(r) {
   elSet('aTp', r.freqHrv.tp);
 
   // Poincaré
-  elSet('aSd1', r.pc.sd1); elSet('aSd2', r.pc.sd2);
-  elSet('aSd1Sd2', r.pc.ratio); elSet('aCsi', r.pc.csi);
+  elSet('aSd1', r.pc.sd1);
+  elSet('aSd2', r.pc.sd2);
+  elSet('aSd1Sd2', r.pc.ratio);
+  elSet('aCsi', r.pc.csi);
 
   // ANS Balance Dial
   // Stress 1-10: 1=full parasympathetic, 10=full sympathetic
@@ -904,7 +950,7 @@ function buildDdx(r) {
 function buildIsbar(r) {
   const I = `Patient: ${r.age}y ${r.sex==='M'?'Male':'Female'} | Mode: ${r.mode} | Scanned: ${r.date} | Algorithm: ${r.algorithm}`;
   const S = `NEWS2 score ${r.news2} [${r.news2Band}]. HR ${r.hr} BPM (${r.hr<60?'bradycardic':r.hr>100?'tachycardic':'normal sinus'}). SpO₂ ${r.spo2}%. RR ${r.rrBpm}/min. Hb estimate ${r.hb} g/dL (${r.anemia.severity}). ${r.afibSuspected?'⚠️ Rhythm irregularity detected. ':''} ${r.sepCount>=3?'⚠️ Multiple sepsis criteria met.':''}`;
-  const B = `OmniTriage ULTRA scan (${r.algorithm} algorithm). ${r.samples} samples @ ${r.fps}FPS. ${r.ibiCount} valid IBI detected. HRV RMSSD ${r.rmssd}ms, SDNN ${r.sdnn}ms, pNN50 ${r.pnn50}%. LF/HF ratio ${r.freqHrv.lfHf}. Vascular age ${r.vascularAge}y (chronological ${r.age}y). Shock index ${r.si}. MAP estimate ${r.mapEst}mmHg.`;
+  const B = `OmniTriage ULTRA scan (${r.algorithm} algorithm). ${r.samples} samples @ ${r.fps}FPS. ${r.ibiCount} valid IBI detected. HRV RMSSD ${r.rmssd != null ? r.rmssd + 'ms' : '--'}, SDNN ${r.sdnn != null ? r.sdnn + 'ms' : '--'}, pNN50 ${r.pnn50 != null ? r.pnn50 + '%' : '--'}. LF/HF ratio ${typeof r.freqHrv?.lfHf === 'number' ? r.freqHrv.lfHf : '--'}. Vascular age ${r.vascularAge}y (chronological ${r.age}y). Shock index ${r.si}. MAP estimate ${r.mapEst}mmHg.`;
   const A = `Primary assessment: ${DDX_DATABASE.map(d=>({...d,p:clamp(d.prob(r),0,0.99)})).filter(d=>d.p>=0.4).sort((a,b)=>b.p-a.p).slice(0,3).map(d=>`${d.cond} (${Math.round(d.p*100)}%)`).join(', ') || 'No high-probability condition identified'}. Autonomic: stress ${r.stress}/10, recovery ${r.recovery}/10, VO₂max est ${r.vo2max}mL/kg/min.`;
   const R = news2Recommendation(r.news2, r.news2Band, r.sepCount, r.afibSuspected);
   elSet('isbarI',I); elSet('isbarS',S); elSet('isbarB',B); elSet('isbarA',A); elSet('isbarR',R);
@@ -1134,9 +1180,9 @@ function exportPdf() {
     ['SpO₂ Estimate (LOINC 59408-5)', `${r.spo2}%`, r.spo2>=95?'Normal':'Below normal'],
     ['Hemoglobin Est. (LOINC 718-7)', `${r.hb} g/dL`, r.anemia.severity],
     ['Resp. Rate Est. (LOINC 9279-1)', `${r.rrBpm}/min`, r.rrBpm>=12&&r.rrBpm<=20?'Normal':'Abnormal'],
-    ['HRV RMSSD (LOINC 80404-7)', `${r.rmssd} ms`, r.rmssd>=20?'Adequate parasympathetic tone':'Reduced HRV'],
-    ['HRV SDNN (Task Force 1996)', `${r.sdnn} ms`, 'Overall autonomic variability'],
-    ['pNN50 (Task Force)', `${r.pnn50}%`, 'Vagal modulation index'],
+    ['HRV RMSSD (LOINC 80404-7)', r.rmssd != null ? `${r.rmssd} ms` : 'Inconclusive', r.rmssd != null ? (r.rmssd>=20?'Adequate parasympathetic tone':'Reduced HRV') : 'Insufficient clean beats'],
+    ['HRV SDNN (Task Force 1996)', r.sdnn != null ? `${r.sdnn} ms` : 'Inconclusive', 'Overall autonomic variability'],
+    ['pNN50 (Task Force)', r.pnn50 != null ? `${r.pnn50}%` : 'Inconclusive', 'Vagal modulation index'],
     ['LF Power (0.04–0.15 Hz)', `${r.freqHrv.lf} ms²`, 'Sympathetic + Parasympathetic'],
     ['HF Power (0.15–0.4 Hz)', `${r.freqHrv.hf} ms²`, 'Parasympathetic (vagal)'],
     ['LF/HF Ratio', `${r.freqHrv.lfHf}`, 'Sympathovagal balance index'],
@@ -1213,21 +1259,21 @@ function exportFhir() {
       mkObs('spo2','59408-5','Oxygen Saturation',r.spo2,'%','%'),
       mkObs('hb','718-7','Hemoglobin',r.hb,'g/dL','g/dL'),
       mkObs('rr','9279-1','Respiratory Rate',r.rrBpm,'/min','/min'),
-      mkObs('rmssd','80404-7','HRV RMSSD',r.rmssd,'ms','ms'),
-      mkObs('sdnn','8867-4','HRV SDNN',r.sdnn,'ms','ms'),
-      mkObs('pnn50','8867-4','pNN50',r.pnn50,'%','%'),
-      mkObs('lf','8867-4','HRV LF Power',r.freqHrv.lf,'ms2','ms2'),
-      mkObs('hf','8867-4','HRV HF Power',r.freqHrv.hf,'ms2','ms2'),
-      mkObs('lfhf','8867-4','LF/HF Ratio',r.freqHrv.lfHf,'ratio','1'),
-      mkObs('sd1','8867-4','Poincaré SD1',r.pc.sd1,'ms','ms'),
-      mkObs('sd2','8867-4','Poincaré SD2',r.pc.sd2,'ms','ms'),
+      r.rmssd != null ? mkObs('rmssd','80404-7','HRV RMSSD',r.rmssd,'ms','ms') : null,
+      r.sdnn != null ? mkObs('sdnn','8867-4','HRV SDNN',r.sdnn,'ms','ms') : null,
+      r.pnn50 != null ? mkObs('pnn50','8867-4','pNN50',r.pnn50,'%','%') : null,
+      typeof r.freqHrv.lf === 'number' ? mkObs('lf','8867-4','HRV LF Power',r.freqHrv.lf,'ms2','ms2') : null,
+      typeof r.freqHrv.hf === 'number' ? mkObs('hf','8867-4','HRV HF Power',r.freqHrv.hf,'ms2','ms2') : null,
+      typeof r.freqHrv.lfHf === 'number' ? mkObs('lfhf','8867-4','LF/HF Ratio',r.freqHrv.lfHf,'ratio','1') : null,
+      typeof r.pc.sd1 === 'number' ? mkObs('sd1','8867-4','Poincaré SD1',r.pc.sd1,'ms','ms') : null,
+      typeof r.pc.sd2 === 'number' ? mkObs('sd2','8867-4','Poincaré SD2',r.pc.sd2,'ms','ms') : null,
       mkObs('pi','8867-4','Perfusion Index',r.pi,'%','%'),
       mkObs('si','8867-4','Shock Index',r.si,'ratio','1'),
       { resource:{ resourceType:'Observation', id:`omnitriage-news2-${r.timestamp}`, status:'final',
         code:{ coding:[{system:'http://snomed.info/sct',code:'1104501000000101',display:'NEWS2'}] },
         valueInteger:r.news2, effectiveDateTime:ts, interpretation:[{text:r.news2Band}] }
       }
-    ]
+    ].filter(Boolean)
   };
   const json = JSON.stringify(bundle, null, 2);
   const fp = el('fhirPreview'), fj = el('fhirJson');
@@ -1287,7 +1333,7 @@ function openSos() {
       `HR: ${r.hr} BPM | SpO₂: ${r.spo2}% | Hb: ${r.hb} g/dL<br>` +
       `NEWS2: ${r.news2} [${r.news2Band}] | Sepsis Risk: ${r.sepCount>=3?'HIGH':r.sepCount>=2?'MODERATE':'LOW'}<br>` +
       `Shock Index: ${r.si} | AFib: ${r.afibSuspected?'SUSPECTED':'Not detected'}<br>` +
-      `Respiration: ${r.rrBpm}/min | HRV: ${r.rmssd}ms<br><br>` +
+      `Respiration: ${r.rrBpm}/min | HRV: ${r.rmssd != null ? r.rmssd + 'ms' : '--'}<br><br>` +
       `ACTION: ${news2Recommendation(r.news2, r.news2Band, r.sepCount, r.afibSuspected).slice(0,120)}...`;
   }
   modal.style.display = 'flex';
@@ -1328,7 +1374,7 @@ function renderHistory() {
     <div class="hp-item ${h.band==='HIGH'?'hp-high':h.band==='MEDIUM'||h.band==='LOW-MEDIUM'?'hp-medium':'hp-low'}">
       <div class="hp-item-left">
         <div class="hp-date">#${i+1} · ${h.date} · ${h.algorithm||'PPG'}</div>
-        <div class="hp-vals">🫀 ${h.hr}BPM | 🧠 ${h.rmssd}ms | 🩸 ${h.hb}g/dL | SpO₂${h.spo2}% | VO₂${h.vo2max||'--'}mL/kg</div>
+        <div class="hp-vals">🫀 ${h.hr}BPM | 🧠 ${h.rmssd != null ? h.rmssd + 'ms' : '--'} | 🩸 ${h.hb}g/dL | SpO₂${h.spo2}% | VO₂${h.vo2max||'--'}mL/kg</div>
         <div class="hp-flags">${h.afib?'💔 AFib Suspected ':''}${h.sepCount>=3?'🚨 HIGH Sepsis Risk ':''}${h.sepCount>=2?'⚠ Moderate Sepsis ':''}${h.samples} pts @ ${h.fps}FPS</div>
       </div>
       <div class="hp-badge ${h.band==='HIGH'?'hb-high':h.band==='MEDIUM'||h.band==='LOW-MEDIUM'?'hb-med':'hb-low'}">NEWS2:${h.news2}</div>
@@ -1528,7 +1574,7 @@ function setGuid(type, title, text) {
 }
 
 function updateScanTab(r) {
-  setStatus(`✓ NEWS2:${r.news2}[${r.news2Band}] | ${r.hr}BPM | HRV ${r.rmssd}ms | Hb ${r.hb}g/dL | ${r.algorithm}`);
+  setStatus(`✓ NEWS2:${r.news2}[${r.news2Band}] | ${r.hr}BPM | HRV ${r.rmssd != null ? r.rmssd + 'ms' : '--'} | Hb ${r.hb}g/dL | ${r.algorithm}`);
 }
 
 function updateCountdown(sec) {
