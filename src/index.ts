@@ -19,6 +19,9 @@ export * from './clinical/afib-arrhythmia-detector';
 export * from './engineering/adaptive-temporal-resampler';
 export * from './investor/cpt-reimbursement-engine';
 
+export * from './database/encrypted-clinical-vault';
+export * from './knowledge/realtime-medical-library';
+
 export * from './triage/news2-triage';
 export * from './triage/qsofa-sepsis';
 export * from './triage/who-imci';

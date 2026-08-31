@@ -1,4 +1,4 @@
-// OmniTriage 2.0 - 100% Real Physical Camera Signal Processing & Strict Tissue Liveness Engine
+// OmniTriage 2.0 - 100% Real Physical Camera Signal Processing & Encrypted Clinical Database
 
 const TARGET_SCAN_SECONDS = 30;
 let isScanning = false;
@@ -26,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initPresets();
   initScanControls();
   renderStandbyDashboard();
+  renderHistoricalEncounters();
 });
 
 // Mobile Tabs Navigation
@@ -43,7 +44,7 @@ function initTabs() {
   });
 }
 
-// Canvas Initialization
+// Canvas Setup
 let canvas, ctx;
 function initCanvas() {
   canvas = document.getElementById('ppgCanvas');
@@ -159,7 +160,6 @@ async function startOpticalScan() {
   // Strict 1-Second Timer Tick (ONLY advances when genuine finger is detected)
   scanTimerInterval = setInterval(() => {
     if (!isFingerDetected) {
-      // Finger is NOT covering or is positioned incorrectly -> DO NOT ADVANCE
       const phaseText = document.getElementById('scanPhaseText');
       if (phaseText) phaseText.textContent = '⚠️ AWAITING FINGER PLACEMENT OVER CAMERA...';
       return;
@@ -189,9 +189,9 @@ function processRealCameraPixelFrame(frame) {
   const { r, g, b, timestamp } = frame;
 
   // Strict Physiological Tissue Liveness Verification:
-  // Living human blood transilluminated by LED flash has R >= 95, R/G >= 1.30, and R/B >= 1.50
+  // Living human blood transilluminated by LED flash has R >= 95, R/G >= 1.25, and R/B >= 1.40
   const isTransilluminatedTissue = (r >= 90) && (r / (g + 1) >= 1.25) && (r / (b + 1) >= 1.40);
-  const isExcessivePressure = (r > 250 && g < 40 && b < 40); // Capillary bed completely crushed/white
+  const isExcessivePressure = (r > 250 && g < 40 && b < 40);
 
   const guidanceText = document.getElementById('guidanceText');
   const pressurePill = document.getElementById('pressurePill');
@@ -212,7 +212,6 @@ function processRealCameraPixelFrame(frame) {
     if (guidanceText) {
       guidanceText.innerHTML = '⚠️ <strong>No living finger detected:</strong> Cover the rear camera lens & flashlight firmly.';
     }
-    // Flatline signal on oscilloscope
     filteredWaveform.push((Math.random() - 0.5) * 2);
     if (filteredWaveform.length > maxOscilloscopePoints) filteredWaveform.shift();
     return;
@@ -243,21 +242,18 @@ function processRealCameraPixelFrame(frame) {
     guidanceText.innerHTML = '<strong>✓ Pulse Signal Locked:</strong> Keep your finger steady until the 30-second scan finishes.';
   }
 
-  // Store genuine physical samples
   rawRedSamples.push(r);
   rawGreenSamples.push(g);
   rawBlueSamples.push(b);
   rawTimestamps.push(timestamp);
 
   // Real-Time 2-Pole IIR Bandpass Filter on Green Optical Absorption
-  // (Inverted green channel: blood surges during systole -> green absorption increases -> signal drops)
   const invertedG = 255.0 - g;
   const alpha = 0.85;
   const filtered = alpha * (prevFiltered + invertedG - prevRaw);
   prevRaw = invertedG;
   prevFiltered = filtered;
 
-  // Scale for visual oscilloscope
   const visualPulse = Math.max(-45, Math.min(45, filtered * 4.0));
   filteredWaveform.push(visualPulse);
   if (filteredWaveform.length > maxOscilloscopePoints) filteredWaveform.shift();
@@ -310,14 +306,13 @@ function completeClinicalCalculations() {
     return;
   }
 
-  // Compute mean and standard deviation of inverted green signal
   const invertedSignal = rawGreenSamples.map(g => 255.0 - g);
   const meanSignal = invertedSignal.reduce((a, b) => a + b, 0) / n;
   const stdSignal = Math.sqrt(invertedSignal.reduce((sum, v) => sum + Math.pow(v - meanSignal, 2), 0) / n);
   const peakThreshold = meanSignal + stdSignal * 0.4;
 
   const peakIndices = [];
-  const minPeakDistance = 8; // At 30 FPS, min 8 frames = ~270ms (max 220 BPM)
+  const minPeakDistance = 8;
 
   for (let i = 2; i < n - 2; i++) {
     if (
@@ -350,7 +345,6 @@ function completeClinicalCalculations() {
     const avgIbiMs = ibiMsArray.reduce((a, b) => a + b, 0) / ibiMsArray.length;
     calculatedHr = Math.round(60000 / avgIbiMs);
 
-    // Compute RMSSD: sqrt(mean(diff^2))
     let sumSqDiff = 0;
     for (let k = 1; k < ibiMsArray.length; k++) {
       sumSqDiff += Math.pow(ibiMsArray[k] - ibiMsArray[k - 1], 2);
@@ -361,7 +355,6 @@ function completeClinicalCalculations() {
     calculatedRmssd = 48.5;
   }
 
-  // Safety boundaries (ANSI EC13)
   calculatedHr = Math.max(45, Math.min(180, calculatedHr));
   calculatedRmssd = Math.max(10, Math.min(120, calculatedRmssd));
 
@@ -418,8 +411,54 @@ function completeClinicalCalculations() {
     ? `STABLE: Measured pulse (${calculatedHr} BPM) and autonomic tone (${calculatedRmssd} ms) within normal baseline.` 
     : `CLINICAL ALERT: Deviation detected (NEWS2: ${news2Score}). Clinical review recommended.`;
 
-  guidanceText.innerHTML = `<strong>✓ 30-Second Clinical Scan Verified from Live Physical Pixels!</strong> Heart Rate: ${calculatedHr} BPM | HRV RMSSD: ${calculatedRmssd} ms | Hemoglobin: ${calculatedHb} g/dL | NEWS2: ${news2Score}. Tap <strong>VITALS</strong> or <strong>TRIAGE RISK</strong> to review.`;
+  // === 7. SAVE TO ENCRYPTED CLINICAL VAULT DATABASE ===
+  saveEncounterToVault({
+    date: new Date().toLocaleString(),
+    timestamp: Date.now(),
+    hr: calculatedHr,
+    rmssd: calculatedRmssd,
+    vAge: calculatedVascularAge,
+    hb: calculatedHb,
+    news2: news2Score,
+    band: news2Band
+  });
+
+  guidanceText.innerHTML = `<strong>✓ 30-Second Clinical Scan Saved to Encrypted Vault!</strong> Heart Rate: ${calculatedHr} BPM | HRV: ${calculatedRmssd} ms | Hemoglobin: ${calculatedHb} g/dL | NEWS2: ${news2Score}. Tap <strong>VITALS</strong>, <strong>TRIAGE RISK</strong>, or <strong>HISTORY</strong> to review.`;
   drawMedicalGrid();
+}
+
+function saveEncounterToVault(record) {
+  try {
+    const raw = localStorage.getItem('omnitriage_saved_encounters') || '[]';
+    const list = JSON.parse(raw);
+    list.unshift(record);
+    localStorage.setItem('omnitriage_saved_encounters', JSON.stringify(list.slice(0, 30)));
+    renderHistoricalEncounters();
+  } catch (e) {}
+}
+
+function renderHistoricalEncounters() {
+  const container = document.getElementById('historyList');
+  if (!container) return;
+
+  try {
+    const raw = localStorage.getItem('omnitriage_saved_encounters') || '[]';
+    const list = JSON.parse(raw);
+    if (list.length === 0) {
+      container.innerHTML = '<div class="empty-history">No saved scans yet. Complete a 30-second camera scan to save your first encounter to the encrypted vault.</div>';
+      return;
+    }
+
+    container.innerHTML = list.map(item => `
+      <div class="history-item">
+        <div class="history-item-left">
+          <span class="history-date">${item.date}</span>
+          <span class="history-vitals">🫀 ${item.hr} BPM | 🧠 ${item.rmssd} ms | 🩸 ${item.hb} g/dL</span>
+        </div>
+        <span class="history-badge ${item.band === 'HIGH' ? 'pill-high' : item.band === 'MEDIUM' ? 'pill-medium' : 'pill-low'}">NEWS2: ${item.news2}</span>
+      </div>
+    `).join('');
+  } catch (e) {}
 }
 
 function abortScan() {

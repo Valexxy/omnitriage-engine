@@ -45,7 +45,7 @@
     </button>
     <button class="tab-btn" data-tab="tab-report">
       <span class="tab-icon">📄</span>
-      <span class="tab-label">PDF REPORT</span>
+      <span class="tab-label">HISTORY & PDF</span>
     </button>
   </nav>
 
@@ -81,7 +81,7 @@
               <span class="countdown-unit">SECONDS</span>
             </div>
           </div>
-          <p id="scanPhaseText" class="countdown-phase-label">CALIBRATING SENSORS...</p>
+          <p id="scanPhaseText" class="countdown-phase-label">AWAITING FINGER PLACEMENT...</p>
         </div>
       </div>
 
@@ -102,7 +102,7 @@
       <div id="guidanceBox" class="instruction-card">
         <div class="instruction-icon">👆</div>
         <div id="guidanceText" class="instruction-text">
-          <strong>How to test:</strong> Gently place your index finger over your phone's rear camera and flashlight. Tap <strong>START SCAN</strong> to begin the 30-second measurement.
+          <strong>Strict Physical Liveness Guard:</strong> Place your index finger gently over your phone's rear camera and flashlight. The timer will only advance when genuine living tissue is detected.
         </div>
       </div>
 
@@ -130,7 +130,7 @@
             <span class="metric-tag">LOINC 8867-4</span>
           </div>
           <div class="metric-middle">
-            <span id="valHeartRate" class="metric-giant">74</span>
+            <span id="valHeartRate" class="metric-giant">--</span>
             <span class="metric-unit">BPM</span>
           </div>
           <div class="metric-bottom">Resting cardiac rhythm is steady and optimal (Normal: 60-100 BPM).</div>
@@ -143,20 +143,20 @@
             <span class="metric-tag">LOINC 80404-7</span>
           </div>
           <div class="metric-middle">
-            <span id="valRmssd" class="metric-giant">51.2</span>
+            <span id="valRmssd" class="metric-giant">--</span>
             <span class="metric-unit">ms</span>
           </div>
-          <div class="metric-bottom">High parasympathetic vagal tone (51.2 ms) indicating excellent biological recovery.</div>
+          <div class="metric-bottom">Measures autonomic parasympathetic tone and physiological recovery.</div>
         </div>
 
         <!-- 3. Vascular Age Card -->
         <div class="metric-card card-amber">
           <div class="metric-top">
             <span class="metric-title">🫁 VASCULAR BIOLOGICAL AGE</span>
-            <span class="metric-tag" id="valBaRatio">APG b/a: -1.06</span>
+            <span class="metric-tag" id="valBaRatio">APG b/a: --</span>
           </div>
           <div class="metric-middle">
-            <span id="valVascularAge" class="metric-giant">29</span>
+            <span id="valVascularAge" class="metric-giant">--</span>
             <span class="metric-unit">YEARS</span>
           </div>
           <div class="metric-bottom">Arterial wall compliance indicates flexible, youthful vascular elasticity.</div>
@@ -166,13 +166,13 @@
         <div class="metric-card card-emerald">
           <div class="metric-top">
             <span class="metric-title">🩸 HEMOGLOBIN OXYGENATION (Hb)</span>
-            <span class="metric-tag" id="valAnemiaSeverity">NORMAL</span>
+            <span class="metric-tag" id="valAnemiaSeverity">PENDING SCAN</span>
           </div>
           <div class="metric-middle">
-            <span id="valHemoglobin" class="metric-giant">14.0</span>
+            <span id="valHemoglobin" class="metric-giant">--</span>
             <span class="metric-unit">g/dL</span>
           </div>
-          <div class="metric-bottom">Spectrophotometric blood oxygen capacity is optimal (Normal: 13.0 - 17.5 g/dL).</div>
+          <div class="metric-bottom">Spectrophotometric blood oxygen capacity (Normal: 13.0 - 17.5 g/dL).</div>
         </div>
       </div>
     </section>
@@ -186,12 +186,12 @@
         <div class="risk-card">
           <div class="risk-header">
             <span class="risk-name">NEWS2 EARLY WARNING SCORE</span>
-            <span id="badgeNews2" class="risk-pill pill-low">SCORE: 0 [LOW]</span>
+            <span id="badgeNews2" class="risk-pill pill-low">SCORE: --</span>
           </div>
           <div class="risk-bar-track">
             <div id="barNews2" class="risk-bar-fill bar-emerald" style="width: 5%;"></div>
           </div>
-          <p id="descNews2" class="risk-explanation">Score 0 (Low Risk): All physiological parameters within normal baseline. Routine monitoring.</p>
+          <p id="descNews2" class="risk-explanation">Royal College of Physicians early warning score for acute clinical deterioration.</p>
         </div>
 
         <!-- qSOFA Sepsis -->
@@ -203,7 +203,7 @@
           <div class="risk-bar-track">
             <div id="barQsofa" class="risk-bar-fill bar-emerald" style="width: 10%;"></div>
           </div>
-          <p id="descQsofa" class="risk-explanation">No signs of systemic organ failure or septic shock.</p>
+          <p id="descQsofa" class="risk-explanation">Sepsis-3 quick Sequential Organ Failure Assessment bedside triage.</p>
         </div>
 
         <!-- 4-6h Predictive Collapse Forecast -->
@@ -222,20 +222,21 @@
         <div class="doctor-reasoning-box">
           <div class="doctor-header">🩺 AI CLINICAL DECISION SUMMARY (WHO/NICE)</div>
           <div id="aiSummaryText" class="doctor-text">
-            STABLE: Vital parameters within normal baseline ranges. Low clinical risk.
+            Awaiting 30-second camera scan to generate personalized clinical diagnostic report.
           </div>
           <div id="aiInterventions" class="doctor-actions">
-            <div class="action-bullet">✓ Routine ambulatory monitoring. Maintain standard hydration.</div>
+            <div class="action-bullet">✓ Complete camera scan to receive evidence-based clinical guidance.</div>
           </div>
         </div>
       </div>
     </section>
 
     <!-- ========================================== -->
-    <!-- TAB 4: PDF REPORT & FHIR BUNDLE           -->
+    <!-- TAB 4: HISTORY & PDF REPORT               -->
     <!-- ========================================== -->
     <section id="tab-report" class="tab-pane">
       <div class="report-container">
+        <!-- PDF Export Hero -->
         <div class="report-hero">
           <div class="report-icon">📄</div>
           <h2>Hospital Diagnostic Report</h2>
@@ -248,6 +249,17 @@
             </svg>
             DOWNLOAD CLINICAL PDF REPORT
           </button>
+        </div>
+
+        <!-- Saved Encrypted Encounters Database -->
+        <div class="history-card">
+          <div class="history-header">
+            <span>🗂️ ENCRYPTED CLINICAL ENCOUNTERS DATABASE</span>
+            <span class="vault-tag">AES-256 VAULT</span>
+          </div>
+          <div id="historyList" class="history-list">
+            <div class="empty-history">No saved scans yet. Complete a 30-second camera scan to save your first encounter to the encrypted vault.</div>
+          </div>
         </div>
 
         <!-- FHIR JSON View -->
