@@ -1,6 +1,6 @@
 /**
  * OmniTriage Live Smartphone Sensor Bridge
- * Real-time camera optical frame extraction with torch support & microphone streaming.
+ * Real-time camera optical frame extraction with hardware torch support & microphone streaming.
  */
 
 class SmartphoneSensorBridge {
@@ -16,14 +16,17 @@ class SmartphoneSensorBridge {
     this.isAudioActive = false;
     this.canvas = document.createElement('canvas');
     this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
-    this.frameBuffer = [];
+    this.torchActive = false;
+    this.onFrame = null;
   }
 
   /**
    * Starts rear camera with LED Flash (Torch) on mobile devices
    */
   async startCamera(onFrameCallback) {
+    this.onFrame = onFrameCallback;
     try {
+      // 1. Request environment rear camera with maximum frame rate
       const constraints = {
         video: {
           facingMode: { ideal: 'environment' },
@@ -38,32 +41,55 @@ class SmartphoneSensorBridge {
       this.videoElement.srcObject = this.stream;
       await this.videoElement.play();
 
-      // Enable torch/flashlight if supported by hardware
+      // 2. Locate video track and engage physical LED Torch / Flashlight
       const track = this.stream.getVideoTracks()[0];
-      const capabilities = track.getCapabilities ? track.getCapabilities() : {};
-      if (capabilities.torch) {
-        try {
-          await track.applyConstraints({ advanced: [{ torch: true }] });
-        } catch (e) {
-          console.warn('Torch activation not allowed:', e);
+      let torchEnabled = false;
+
+      if (track) {
+        // Method A: Check capabilities
+        const capabilities = track.getCapabilities ? track.getCapabilities() : {};
+        if (capabilities.torch || 'torch' in capabilities) {
+          try {
+            await track.applyConstraints({ advanced: [{ torch: true }] });
+            torchEnabled = true;
+            this.torchActive = true;
+          } catch (torchErr) {
+            console.warn('[SensorBridge] Direct torch constraint failed, trying fallback:', torchErr);
+          }
+        }
+
+        // Method B: Try applyConstraints directly even if capabilities were hidden
+        if (!torchEnabled && track.applyConstraints) {
+          try {
+            await track.applyConstraints({ advanced: [{ torch: true }] });
+            torchEnabled = true;
+            this.torchActive = true;
+          } catch (e) {
+            console.info('[SensorBridge] Hardware torch not accessible in this browser (iOS/Sandbox).');
+          }
         }
       }
 
       this.canvas.width = 64;
       this.canvas.height = 64;
       this.isCameraActive = true;
-      this._processFrames(onFrameCallback);
-      return { success: true, torchSupported: !!capabilities.torch };
+      this._processFrames();
+
+      return {
+        success: true,
+        torchActive: torchEnabled,
+        cameraName: track ? track.label : 'Rear Camera'
+      };
     } catch (err) {
-      console.warn('Camera access error (falling back to precision simulation):', err);
-      return { success: false, error: err.message };
+      console.warn('[SensorBridge] Camera initialization error:', err);
+      return { success: false, error: err.message, torchActive: false };
     }
   }
 
-  _processFrames(onFrameCallback) {
+  _processFrames() {
     if (!this.isCameraActive) return;
 
-    if (this.videoElement.readyState === this.videoElement.HAVE_ENOUGH_DATA) {
+    if (this.videoElement.readyState >= this.videoElement.HAVE_CURRENT_DATA) {
       this.ctx.drawImage(this.videoElement, 0, 0, this.canvas.width, this.canvas.height);
       const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
       const data = imageData.data;
@@ -80,53 +106,38 @@ class SmartphoneSensorBridge {
       const gAvg = gSum / count;
       const bAvg = bSum / count;
 
-      if (onFrameCallback) {
-        onFrameCallback({ r: rAvg, g: gAvg, b: bAvg, timestamp: performance.now() });
+      if (this.onFrame) {
+        this.onFrame({ r: rAvg, g: gAvg, b: bAvg, timestamp: performance.now() });
       }
     }
 
-    requestAnimationFrame(() => this._processFrames(onFrameCallback));
-  }
-
-  /**
-   * Starts microphone audio stream for bioacoustic pulmonary analysis
-   */
-  async startMicrophone(onAudioFrameCallback) {
-    try {
-      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      const source = this.audioContext.createMediaStreamSource(audioStream);
-      this.analyser = this.audioContext.createAnalyser();
-      this.analyser.fftSize = 1024;
-      source.connect(this.analyser);
-      this.isAudioActive = true;
-
-      const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
-      const processAudio = () => {
-        if (!this.isAudioActive) return;
-        this.analyser.getByteFrequencyData(dataArray);
-        if (onAudioFrameCallback) {
-          onAudioFrameCallback(Array.from(dataArray));
-        }
-        requestAnimationFrame(processAudio);
-      };
-      processAudio();
-      return { success: true };
-    } catch (err) {
-      console.warn('Microphone access error:', err);
-      return { success: false, error: err.message };
-    }
+    requestAnimationFrame(() => this._processFrames());
   }
 
   stopAll() {
     this.isCameraActive = false;
     this.isAudioActive = false;
+
     if (this.stream) {
-      this.stream.getTracks().forEach(track => track.stop());
+      this.stream.getTracks().forEach(track => {
+        // Turn off torch before stopping
+        try {
+          if (track.applyConstraints) {
+            track.applyConstraints({ advanced: [{ torch: false }] });
+          }
+        } catch (e) {}
+        track.stop();
+      });
+      this.stream = null;
     }
+
     if (this.audioContext) {
-      this.audioContext.close();
+      try { this.audioContext.close(); } catch (e) {}
+      this.audioContext = null;
     }
+    this.torchActive = false;
   }
 }
-window.SmartphoneSensorBridge = SmartphoneSensorBridge;
+
+// Global Sensor Bridge Singleton
+window.SensorBridge = new SmartphoneSensorBridge();
