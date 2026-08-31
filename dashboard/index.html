@@ -3,17 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>OmniTriage Engine | Clinical SaMD</title>
+  <title>OmniTriage Pro | Clinical AI Diagnostics Platform</title>
   <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#06090e">
+  <meta name="theme-color" content="#060a10">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="OmniTriage Pro — WHO-aligned AI triage, PPG vitals, hemoglobin screening, NEWS2, AFib detection. FDA SaMD pathway. ISO 80601-2-61 / HL7 FHIR R4.">
   <link rel="stylesheet" href="styles.css">
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 </head>
 <body class="medical-theme">
-  <!-- Top Navigation Bar -->
+
+  <!-- ===== TOP HEADER ===== -->
   <header class="mobile-header">
     <div class="header-branding">
       <div class="logo-icon">
@@ -22,18 +25,21 @@
         </svg>
       </div>
       <div>
-        <h1 class="app-name">OMNITRIAGE <span class="app-version">v2.0</span></h1>
-        <p class="app-badge">ISO 80601-2-61 • HL7 FHIR v4</p>
+        <h1 class="app-name">OMNITRIAGE <span class="app-version">PRO</span></h1>
+        <p class="app-badge">ISO 80601 · HL7 FHIR R4 · WHO · NEWS2 · FDA SaMD</p>
       </div>
     </div>
-    <button id="pwaInstallBtn" class="btn-install-header" style="display:none;">INSTALL APP</button>
+    <div class="header-actions">
+      <div class="live-signal-dot" id="liveSignalDot"></div>
+      <button id="pwaInstallBtn" class="btn-install-header" style="display:none;">⬇ INSTALL</button>
+    </div>
   </header>
 
-  <!-- Mobile Segmented Tab Navigation -->
+  <!-- ===== MOBILE TAB NAV ===== -->
   <nav class="mobile-tab-bar">
     <button class="tab-btn active" data-tab="tab-scan">
       <span class="tab-icon">🫀</span>
-      <span class="tab-label">CAMERA SCAN</span>
+      <span class="tab-label">SCAN</span>
     </button>
     <button class="tab-btn" data-tab="tab-vitals">
       <span class="tab-icon">📊</span>
@@ -41,35 +47,39 @@
     </button>
     <button class="tab-btn" data-tab="tab-triage">
       <span class="tab-icon">🏥</span>
-      <span class="tab-label">TRIAGE RISK</span>
+      <span class="tab-label">TRIAGE</span>
+    </button>
+    <button class="tab-btn" data-tab="tab-analytics">
+      <span class="tab-icon">📈</span>
+      <span class="tab-label">TRENDS</span>
     </button>
     <button class="tab-btn" data-tab="tab-report">
       <span class="tab-icon">📄</span>
-      <span class="tab-label">HISTORY & PDF</span>
+      <span class="tab-label">REPORT</span>
     </button>
   </nav>
 
-  <!-- Main Container -->
   <main class="app-content-container">
 
-    <!-- ========================================== -->
-    <!-- TAB 1: LIVE CAMERA SCAN                    -->
-    <!-- ========================================== -->
+    <!-- =========================================== -->
+    <!-- TAB 1: LIVE CAMERA SCAN                     -->
+    <!-- =========================================== -->
     <section id="tab-scan" class="tab-pane active">
-      <!-- Live Pulse Banner -->
+
+      <!-- Status Banner -->
       <div class="live-banner">
         <div class="pulse-indicator">
-          <span class="pulse-dot"></span>
+          <span class="pulse-dot" id="pulseDot"></span>
           <span id="scanStatusBadge">READY TO SCAN</span>
         </div>
-        <div class="sensor-pill" id="pressurePill">PRESSURE: OPTIMAL</div>
+        <div class="sensor-pill" id="pressurePill">SENSOR IDLE</div>
       </div>
 
-      <!-- Oscilloscope & 30s Countdown Dial -->
+      <!-- Oscilloscope Card -->
       <div class="scanner-card">
         <canvas id="ppgCanvas" width="600" height="180"></canvas>
-        
-        <!-- Interactive 30-Second Countdown Overlay -->
+
+        <!-- 30s Countdown Overlay -->
         <div id="scanTimerOverlay" class="scan-countdown-overlay" style="display:none;">
           <div class="countdown-dial">
             <svg class="countdown-svg" viewBox="0 0 100 100">
@@ -78,200 +88,522 @@
             </svg>
             <div class="countdown-number-box">
               <span id="scanSecondsRemaining" class="countdown-digits">30</span>
-              <span class="countdown-unit">SECONDS</span>
+              <span class="countdown-unit">SEC</span>
             </div>
           </div>
-          <p id="scanPhaseText" class="countdown-phase-label">AWAITING FINGER PLACEMENT...</p>
+          <div class="scan-phase-box">
+            <p id="scanPhaseText" class="scan-phase-text">INITIALISING OPTICAL SENSOR...</p>
+          </div>
         </div>
       </div>
 
-      <!-- Primary Action Buttons -->
-      <div class="scan-action-container">
-        <button id="startScanBtn" class="btn-main-action btn-scan-start">
-          <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/>
-          </svg>
-          START 30S CLINICAL SCAN
-        </button>
-        <button id="abortScanBtn" class="btn-main-action btn-scan-abort" style="display:none;">
-          CANCEL SCAN
-        </button>
-      </div>
-
-      <!-- Clear Guidance Box -->
-      <div id="guidanceBox" class="instruction-card">
-        <div class="instruction-icon">👆</div>
-        <div id="guidanceText" class="instruction-text">
-          <strong>Strict Physical Liveness Guard:</strong> Place your index finger gently over your phone's rear camera and flashlight. The timer will only advance when genuine living tissue is detected.
+      <!-- Live Real-Time Mini Metrics during scan -->
+      <div class="live-mini-metrics" id="liveMiniMetrics" style="display:none;">
+        <div class="mini-metric">
+          <span class="mini-label">LIVE HR</span>
+          <span class="mini-value" id="liveHrDisplay">--</span>
+          <span class="mini-unit">BPM</span>
+        </div>
+        <div class="mini-metric">
+          <span class="mini-label">SIGNAL Q</span>
+          <span class="mini-value" id="liveQualityDisplay">--</span>
+          <span class="mini-unit">SQI</span>
+        </div>
+        <div class="mini-metric">
+          <span class="mini-label">FPS</span>
+          <span class="mini-value" id="liveFpsDisplay">--</span>
+          <span class="mini-unit">Hz</span>
+        </div>
+        <div class="mini-metric">
+          <span class="mini-label">SAMPLES</span>
+          <span class="mini-value" id="liveSamplesDisplay">0</span>
+          <span class="mini-unit">pts</span>
         </div>
       </div>
 
-      <!-- Quick Benchmark Presets -->
-      <div class="preset-card">
-        <div class="preset-header">⚡ INSTANT CLINICAL PRESETS (TAP TO TEST):</div>
+      <!-- Finger Placement Guidance -->
+      <div class="guidance-card" id="guidanceCard">
+        <div class="guidance-icon">👆</div>
+        <div class="guidance-body">
+          <p class="guidance-title">Finger Placement Protocol</p>
+          <p class="guidance-text" id="guidanceText">Place your index finger firmly over the <strong>rear camera lens AND flashlight</strong>. Keep steady pressure — do not press too hard.</p>
+        </div>
+      </div>
+
+      <!-- Placement Quality Meter -->
+      <div class="quality-meter-card" id="qualityMeterCard">
+        <div class="qm-label">SIGNAL QUALITY INDEX (SQI)</div>
+        <div class="qm-bar-track">
+          <div class="qm-bar-fill" id="sqiBarFill" style="width:0%"></div>
+          <span class="qm-pct" id="sqiPct">0%</span>
+        </div>
+        <div class="qm-zones">
+          <span class="qm-zone bad">POOR</span>
+          <span class="qm-zone ok">FAIR</span>
+          <span class="qm-zone good">OPTIMAL</span>
+        </div>
+      </div>
+
+      <!-- Control Buttons -->
+      <div class="scan-controls">
+        <button id="startScanBtn" class="btn-start-scan">
+          <span>▶</span> START 30-SECOND CLINICAL SCAN
+        </button>
+        <button id="abortScanBtn" class="btn-abort-scan" style="display:none;">
+          <span>■</span> ABORT SCAN
+        </button>
+      </div>
+
+      <!-- Demographic Input (affects clinical reference ranges) -->
+      <div class="demographics-card">
+        <div class="demo-title">📋 PATIENT PROFILE <span class="demo-sub">(affects reference ranges)</span></div>
+        <div class="demo-row">
+          <label>AGE</label>
+          <input type="number" id="patientAge" class="demo-input" placeholder="e.g. 35" min="0" max="120" value="">
+          <label>SEX</label>
+          <select id="patientSex" class="demo-select">
+            <option value="male">Male</option>
+            <option value="female">Female</option>
+          </select>
+        </div>
+        <div class="demo-row">
+          <label>ALTITUDE (m)</label>
+          <input type="number" id="patientAltitude" class="demo-input" placeholder="0" min="0" max="5000" value="0">
+          <label>MODE</label>
+          <select id="patientMode" class="demo-select">
+            <option value="adult">Adult</option>
+            <option value="pediatric">Pediatric</option>
+            <option value="pregnant">Pregnant</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Demo Scenarios -->
+      <div class="presets-section">
+        <div class="presets-label">🎭 CLINICAL SCENARIO DEMOS</div>
         <div class="preset-grid">
-          <button class="preset-btn active" data-preset="healthy">🟢 Healthy Adult</button>
-          <button class="preset-btn" data-preset="sepsis">🔴 Sepsis Shock</button>
-          <button class="preset-btn" data-preset="anemia">🟡 Severe Anemia</button>
-          <button class="preset-btn" data-preset="pediatric">🔴 Pediatric Danger</button>
+          <button class="preset-btn" data-preset="healthy">✅ Healthy Adult</button>
+          <button class="preset-btn" data-preset="sepsis">🚨 Sepsis Alert</button>
+          <button class="preset-btn" data-preset="anemia">🩸 Severe Anemia</button>
+          <button class="preset-btn" data-preset="afib">💔 AFib Detected</button>
+          <button class="preset-btn" data-preset="pediatric">👶 Pediatric</button>
+          <button class="preset-btn" data-preset="hypoxia">😮‍💨 Hypoxia</button>
         </div>
       </div>
     </section>
 
-    <!-- ========================================== -->
-    <!-- TAB 2: DETAILED VITALS & BIOMARKERS       -->
-    <!-- ========================================== -->
+    <!-- =========================================== -->
+    <!-- TAB 2: VITALS DASHBOARD                     -->
+    <!-- =========================================== -->
     <section id="tab-vitals" class="tab-pane">
-      <div class="vitals-mobile-stack">
-        <!-- 1. Heart Rate / Pulse Card -->
-        <div class="metric-card card-emerald">
-          <div class="metric-top">
-            <span class="metric-title">🫀 PULSE (HEART RATE)</span>
-            <span class="metric-tag">LOINC 8867-4</span>
-          </div>
-          <div class="metric-middle">
-            <span id="valHeartRate" class="metric-giant">--</span>
+
+      <!-- PRIMARY VITALS ROW -->
+      <div class="section-header">🫀 PRIMARY PHYSIOLOGICAL VITALS</div>
+      <div class="vitals-grid-2col">
+        <div class="metric-card card-pulse">
+          <div class="metric-loinc">LOINC 8867-4</div>
+          <div class="metric-label">PULSE RATE</div>
+          <div class="metric-value-box">
+            <span class="metric-num" id="valHeartRate">--</span>
             <span class="metric-unit">BPM</span>
           </div>
-          <div class="metric-bottom">Resting cardiac rhythm is steady and optimal (Normal: 60-100 BPM).</div>
+          <div class="metric-ref" id="refHeartRate">Normal: 60–100 BPM</div>
+          <div class="metric-status" id="statusHeartRate">AWAITING SCAN</div>
         </div>
-
-        <!-- 2. HRV Vagal Stress Buffer Card -->
-        <div class="metric-card card-cyan">
-          <div class="metric-top">
-            <span class="metric-title">🧠 STRESS & RECOVERY (HRV RMSSD)</span>
-            <span class="metric-tag">LOINC 80404-7</span>
-          </div>
-          <div class="metric-middle">
-            <span id="valRmssd" class="metric-giant">--</span>
+        <div class="metric-card card-hrv">
+          <div class="metric-loinc">LOINC 80404-7</div>
+          <div class="metric-label">HRV (RMSSD)</div>
+          <div class="metric-value-box">
+            <span class="metric-num" id="valRmssd">--</span>
             <span class="metric-unit">ms</span>
           </div>
-          <div class="metric-bottom">Measures autonomic parasympathetic tone and physiological recovery.</div>
+          <div class="metric-ref" id="refRmssd">Normal: 20–65 ms (age-adj)</div>
+          <div class="metric-status" id="statusRmssd">AWAITING SCAN</div>
         </div>
+      </div>
 
-        <!-- 3. Vascular Age Card -->
-        <div class="metric-card card-amber">
-          <div class="metric-top">
-            <span class="metric-title">🫁 VASCULAR BIOLOGICAL AGE</span>
-            <span class="metric-tag" id="valBaRatio">APG b/a: --</span>
-          </div>
-          <div class="metric-middle">
-            <span id="valVascularAge" class="metric-giant">--</span>
-            <span class="metric-unit">YEARS</span>
-          </div>
-          <div class="metric-bottom">Arterial wall compliance indicates flexible, youthful vascular elasticity.</div>
+      <!-- AFIB DETECTION PANEL -->
+      <div class="afib-panel" id="afibPanel">
+        <div class="afib-icon" id="afibIcon">💓</div>
+        <div class="afib-body">
+          <div class="afib-title">CARDIAC RHYTHM ANALYSIS</div>
+          <div class="afib-result" id="afibResult">Sinus Rhythm — Awaiting scan data</div>
+          <div class="afib-detail" id="afibDetail">RR Variability (CoV): --</div>
         </div>
+        <div class="afib-badge" id="afibBadge">--</div>
+      </div>
 
-        <!-- 4. Hemoglobin Card -->
-        <div class="metric-card card-emerald">
-          <div class="metric-top">
-            <span class="metric-title">🩸 HEMOGLOBIN OXYGENATION (Hb)</span>
-            <span class="metric-tag" id="valAnemiaSeverity">PENDING SCAN</span>
-          </div>
-          <div class="metric-middle">
-            <span id="valHemoglobin" class="metric-giant">--</span>
+      <!-- HEMOGLOBIN & SpO2 ROW -->
+      <div class="section-header">🩸 HAEMATOLOGICAL BIOMARKERS</div>
+      <div class="vitals-grid-2col">
+        <div class="metric-card card-hb">
+          <div class="metric-loinc">LOINC 718-7</div>
+          <div class="metric-label">HEMOGLOBIN Est.</div>
+          <div class="metric-value-box">
+            <span class="metric-num" id="valHemoglobin">--</span>
             <span class="metric-unit">g/dL</span>
           </div>
-          <div class="metric-bottom">Spectrophotometric blood oxygen capacity (Normal: 13.0 - 17.5 g/dL).</div>
+          <div class="metric-ref" id="refHemoglobin">WHO: ≥13.0 (M) / ≥12.0 (F)</div>
+          <div class="metric-status" id="statusHemoglobin">AWAITING SCAN</div>
+        </div>
+        <div class="metric-card card-spo2">
+          <div class="metric-loinc">LOINC 59408-5</div>
+          <div class="metric-label">SpO₂ Est.</div>
+          <div class="metric-value-box">
+            <span class="metric-num" id="valSpO2">--</span>
+            <span class="metric-unit">%</span>
+          </div>
+          <div class="metric-ref">ISO 80601-2-61: ≥95%</div>
+          <div class="metric-status" id="statusSpO2">AWAITING SCAN</div>
+        </div>
+      </div>
+
+      <!-- ANEMIA SEVERITY PANEL -->
+      <div class="anemia-panel" id="anemiaPanel">
+        <div class="anemia-icon">🩸</div>
+        <div class="anemia-body">
+          <div class="anemia-title">WHO ANEMIA CLASSIFICATION</div>
+          <div class="anemia-result" id="anemiaResult">Awaiting haematological data</div>
+          <div class="anemia-ref">WHO 2024: Hb &lt;13.0 (M) / &lt;12.0 (F) / &lt;11.0 (Pregnancy)</div>
+        </div>
+        <div class="anemia-badge" id="anemiaBadge">--</div>
+      </div>
+
+      <!-- VASCULAR & CARDIAC -->
+      <div class="section-header">🫀 VASCULAR & CARDIAC METRICS</div>
+      <div class="vitals-grid-3col">
+        <div class="metric-card card-vascular">
+          <div class="metric-loinc">APG / SDPTG</div>
+          <div class="metric-label">VASCULAR AGE</div>
+          <div class="metric-value-box">
+            <span class="metric-num" id="valVascularAge">--</span>
+            <span class="metric-unit">yrs</span>
+          </div>
+          <div class="metric-status" id="statusVascular">--</div>
+        </div>
+        <div class="metric-card card-ba">
+          <div class="metric-loinc">AHA Guidelines</div>
+          <div class="metric-label">APG b/a RATIO</div>
+          <div class="metric-value-box">
+            <span class="metric-num" id="valBaRatio">--</span>
+            <span class="metric-unit"></span>
+          </div>
+          <div class="metric-status" id="statusBa">Arterial Elasticity</div>
+        </div>
+        <div class="metric-card card-stress">
+          <div class="metric-loinc">ANS Index</div>
+          <div class="metric-label">STRESS LEVEL</div>
+          <div class="metric-value-box">
+            <span class="metric-num" id="valStress">--</span>
+            <span class="metric-unit">/10</span>
+          </div>
+          <div class="metric-status" id="statusStress">Parasympathetic</div>
+        </div>
+      </div>
+
+      <!-- RESPIRATORY ESTIMATE -->
+      <div class="section-header">💨 RESPIRATORY ESTIMATE (PPG-Derived)</div>
+      <div class="vitals-grid-2col">
+        <div class="metric-card card-rr">
+          <div class="metric-loinc">LOINC 9279-1</div>
+          <div class="metric-label">RESP RATE Est.</div>
+          <div class="metric-value-box">
+            <span class="metric-num" id="valRespRate">--</span>
+            <span class="metric-unit">br/min</span>
+          </div>
+          <div class="metric-ref">NEWS2: Normal 12–20/min</div>
+          <div class="metric-status" id="statusRespRate">AWAITING SCAN</div>
+        </div>
+        <div class="metric-card card-pi">
+          <div class="metric-loinc">Perfusion</div>
+          <div class="metric-label">PERFUSION INDEX</div>
+          <div class="metric-value-box">
+            <span class="metric-num" id="valPerfusion">--</span>
+            <span class="metric-unit">%</span>
+          </div>
+          <div class="metric-ref">Normal: 0.2–20%</div>
+          <div class="metric-status" id="statusPerfusion">AWAITING SCAN</div>
+        </div>
+      </div>
+
+      <!-- AI CLINICAL INTERPRETATION -->
+      <div class="ai-summary-card">
+        <div class="ai-header">🤖 AI CLINICAL INTERPRETATION ENGINE</div>
+        <div class="ai-body" id="aiSummaryText">Complete a 30-second camera scan to receive AI-powered clinical interpretation based on WHO, NICE CG50, AHA/ACC, and Sepsis-3 guidelines.</div>
+        <div class="ai-footer">
+          <span class="ai-standard">Sepsis-3 · NICE CG50 · AHA/ACC 2024 · WHO 2024</span>
         </div>
       </div>
     </section>
 
-    <!-- ========================================== -->
-    <!-- TAB 3: HOSPITAL TRIAGE RISK               -->
-    <!-- ========================================== -->
+    <!-- =========================================== -->
+    <!-- TAB 3: TRIAGE RISK ENGINE                   -->
+    <!-- =========================================== -->
     <section id="tab-triage" class="tab-pane">
-      <div class="triage-mobile-stack">
-        <!-- NEWS2 Early Warning -->
-        <div class="risk-card">
-          <div class="risk-header">
-            <span class="risk-name">NEWS2 EARLY WARNING SCORE</span>
-            <span id="badgeNews2" class="risk-pill pill-low">SCORE: --</span>
-          </div>
-          <div class="risk-bar-track">
-            <div id="barNews2" class="risk-bar-fill bar-emerald" style="width: 5%;"></div>
-          </div>
-          <p id="descNews2" class="risk-explanation">Royal College of Physicians early warning score for acute clinical deterioration.</p>
-        </div>
 
-        <!-- qSOFA Sepsis -->
-        <div class="risk-card">
-          <div class="risk-header">
-            <span class="risk-name">qSOFA SEPSIS SCREENING</span>
-            <span id="badgeQsofa" class="risk-pill pill-low">0 / 3 (LOW RISK)</span>
-          </div>
-          <div class="risk-bar-track">
-            <div id="barQsofa" class="risk-bar-fill bar-emerald" style="width: 10%;"></div>
-          </div>
-          <p id="descQsofa" class="risk-explanation">Sepsis-3 quick Sequential Organ Failure Assessment bedside triage.</p>
+      <!-- NEWS2 MASTER SCORE -->
+      <div class="news2-master-card" id="news2MasterCard">
+        <div class="news2-header">
+          <span class="news2-title">NEWS2 EARLY WARNING SCORE</span>
+          <span class="news2-source">Royal College of Physicians · NHS England</span>
         </div>
-
-        <!-- 4-6h Predictive Collapse Forecast -->
-        <div class="risk-card">
-          <div class="risk-header">
-            <span class="risk-name">4-6H DECOMPENSATION FORECAST</span>
-            <span id="badgeDecomp" class="risk-pill pill-low">12% [STABLE]</span>
-          </div>
-          <div class="risk-bar-track">
-            <div id="barDecomp" class="risk-bar-fill bar-emerald" style="width: 12%;"></div>
-          </div>
-          <p id="descDecomp" class="risk-explanation">Continuous hemodynamic stability predicted across next 6 hours.</p>
+        <div class="news2-score-display">
+          <div class="news2-number" id="news2Number">--</div>
+          <div class="news2-band-pill" id="news2BandPill">AWAITING</div>
         </div>
+        <div class="news2-progress-track">
+          <div class="news2-progress-fill" id="news2ProgressFill" style="width:2%"></div>
+        </div>
+        <div class="news2-scale-labels">
+          <span>0 LOW</span><span>3 MEDIUM</span><span>5 HIGH</span><span>7+ EMERGENCY</span>
+        </div>
+        <div class="news2-action" id="news2Action">Complete scan to generate NEWS2 score</div>
+      </div>
 
-        <!-- AI Doctor Summary -->
-        <div class="doctor-reasoning-box">
-          <div class="doctor-header">🩺 AI CLINICAL DECISION SUMMARY (WHO/NICE)</div>
-          <div id="aiSummaryText" class="doctor-text">
-            Awaiting 30-second camera scan to generate personalized clinical diagnostic report.
+      <!-- NEWS2 PARAMETER BREAKDOWN -->
+      <div class="section-header">📋 NEWS2 PARAMETER BREAKDOWN (7 Parameters)</div>
+      <div class="news2-params-grid" id="news2ParamsGrid">
+        <div class="news2-param-row">
+          <span class="np-name">Pulse Rate</span>
+          <span class="np-value" id="npPulse">--</span>
+          <span class="np-score" id="nscore-pulse">0</span>
+        </div>
+        <div class="news2-param-row">
+          <span class="np-name">Resp Rate (est)</span>
+          <span class="np-value" id="npResp">--</span>
+          <span class="np-score" id="nscore-resp">0</span>
+        </div>
+        <div class="news2-param-row">
+          <span class="np-name">SpO₂ (est)</span>
+          <span class="np-value" id="npSpo2">--</span>
+          <span class="np-score" id="nscore-spo2">0</span>
+        </div>
+        <div class="news2-param-row">
+          <span class="np-name">Temperature</span>
+          <span class="np-value" id="npTemp">--</span>
+          <span class="np-score" id="nscore-temp">0</span>
+        </div>
+        <div class="news2-param-row">
+          <span class="np-name">Consciousness</span>
+          <span class="np-value" id="npAvpu">Alert (A)</span>
+          <span class="np-score" id="nscore-avpu">0</span>
+        </div>
+        <div class="news2-param-row">
+          <span class="np-name">Suppl. Oxygen</span>
+          <span class="np-value" id="npO2">Air</span>
+          <span class="np-score" id="nscore-o2">0</span>
+        </div>
+        <div class="news2-param-row np-total-row">
+          <span class="np-name">📊 TOTAL SCORE</span>
+          <span class="np-value" id="npTotal">--</span>
+          <span class="np-score" id="nscore-total" style="color:#f43f5e;font-weight:800">--</span>
+        </div>
+      </div>
+
+      <!-- SEPSIS SCREENING -->
+      <div class="section-header">🚨 SEPSIS-3 SCREENING (WHO / Surviving Sepsis Campaign 2026)</div>
+      <div class="sepsis-card" id="sepsisCard">
+        <div class="sepsis-status-bar" id="sepsisStatusBar">
+          <div class="ss-icon" id="sepsisIcon">🟢</div>
+          <div class="ss-body">
+            <div class="ss-title" id="sepsisTitle">SEPSIS SCREENING</div>
+            <div class="ss-detail" id="sepsisDetail">Awaiting vital sign acquisition</div>
           </div>
-          <div id="aiInterventions" class="doctor-actions">
-            <div class="action-bullet">✓ Complete camera scan to receive evidence-based clinical guidance.</div>
+          <div class="ss-badge" id="sepsisBadge">--</div>
+        </div>
+        <div class="sepsis-criteria-grid">
+          <div class="sc-item" id="sc-hr"><span class="sc-label">Tachycardia</span><span class="sc-val" id="scv-hr">--</span></div>
+          <div class="sc-item" id="sc-rr"><span class="sc-label">Tachypnea</span><span class="sc-val" id="scv-rr">--</span></div>
+          <div class="sc-item" id="sc-hb"><span class="sc-label">Haemoglobin</span><span class="sc-val" id="scv-hb">--</span></div>
+          <div class="sc-item" id="sc-hrv"><span class="sc-label">Autonomic Tone</span><span class="sc-val" id="scv-hrv">--</span></div>
+        </div>
+        <div class="sepsis-six-box">
+          <div class="six-title">🏥 UK SEPSIS TRUST — SEPSIS SIX (If Sepsis Suspected)</div>
+          <div class="six-steps">
+            <div class="six-step">1. Give high-flow oxygen</div>
+            <div class="six-step">2. Take blood cultures</div>
+            <div class="six-step">3. Give IV antibiotics</div>
+            <div class="six-step">4. Measure serum lactate + Hb</div>
+            <div class="six-step">5. Start IV fluid resuscitation</div>
+            <div class="six-step">6. Commence accurate urine output measurement</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SHOCK INDEX -->
+      <div class="section-header">⚡ SHOCK INDEX (Haemodynamic Stability)</div>
+      <div class="shock-card">
+        <div class="shock-formula">SI = HR ÷ SBP (estimated)</div>
+        <div class="shock-value-row">
+          <div class="shock-index-val" id="shockIndexVal">--</div>
+          <div class="shock-interpretation" id="shockInterpretation">Awaiting data</div>
+        </div>
+        <div class="shock-thresholds">
+          <span class="st-range st-normal">0.5–0.7: NORMAL</span>
+          <span class="st-range st-warn">&gt;0.9: CONCERN</span>
+          <span class="st-range st-crit">&gt;1.0: CRITICAL</span>
+        </div>
+      </div>
+
+      <!-- AFib CHA2DS2-VASc Risk Score -->
+      <div class="section-header">💔 ATRIAL FIBRILLATION — CHA₂DS₂-VASc STROKE RISK</div>
+      <div class="afib-risk-card" id="afibRiskCard">
+        <div class="afr-header">
+          <span>Stroke Risk Stratification (if AFib detected)</span>
+          <span class="afr-source">AHA/ACC 2024 Guidelines</span>
+        </div>
+        <div class="afr-score-row">
+          <span class="afr-score" id="cha2Score">--</span>
+          <span class="afr-label" id="cha2Label">Complete age entry + scan</span>
+        </div>
+        <div class="afr-action" id="cha2Action">CHA₂DS₂-VASc requires age, sex, and detected rhythm data</div>
+      </div>
+
+      <!-- CLINICAL ESCALATION PATHWAY -->
+      <div class="section-header">🔺 CLINICAL ESCALATION PATHWAY</div>
+      <div class="escalation-card" id="escalationCard">
+        <div class="esc-timeline">
+          <div class="esc-step" id="esc1">
+            <div class="esc-num">1</div>
+            <div class="esc-text">OmniTriage screening complete</div>
+          </div>
+          <div class="esc-step" id="esc2">
+            <div class="esc-num">2</div>
+            <div class="esc-text" id="esc2Text">Clinical assessment if NEWS2 ≥3</div>
+          </div>
+          <div class="esc-step" id="esc3">
+            <div class="esc-num">3</div>
+            <div class="esc-text" id="esc3Text">Urgent review if NEWS2 ≥5 or any parameter scores 3</div>
+          </div>
+          <div class="esc-step" id="esc4">
+            <div class="esc-num">4</div>
+            <div class="esc-text" id="esc4Text">Emergency response: continuous monitoring + IV access + escalate to ICU if NEWS2 ≥7</div>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- ========================================== -->
-    <!-- TAB 4: HISTORY & PDF REPORT               -->
-    <!-- ========================================== -->
+    <!-- =========================================== -->
+    <!-- TAB 4: TRENDS & ANALYTICS                   -->
+    <!-- =========================================== -->
+    <section id="tab-analytics" class="tab-pane">
+
+      <div class="section-header">📈 LONGITUDINAL VITALS TRENDS</div>
+
+      <!-- HR Trend Chart -->
+      <div class="chart-card">
+        <div class="chart-title">Heart Rate Over Time (BPM)</div>
+        <canvas id="hrTrendChart" height="120"></canvas>
+        <div class="chart-ref-lines">
+          <span class="crl crl-normal">─ Normal Zone (60–100)</span>
+          <span class="crl crl-alert">─ Alert Threshold</span>
+        </div>
+      </div>
+
+      <!-- HRV Trend Chart -->
+      <div class="chart-card">
+        <div class="chart-title">HRV RMSSD Over Time (ms)</div>
+        <canvas id="hrvTrendChart" height="120"></canvas>
+      </div>
+
+      <!-- Hb Trend Chart -->
+      <div class="chart-card">
+        <div class="chart-title">Hemoglobin Estimate Over Time (g/dL)</div>
+        <canvas id="hbTrendChart" height="120"></canvas>
+        <div class="chart-ref-lines">
+          <span class="crl crl-alert">─ WHO Anemia Threshold</span>
+        </div>
+      </div>
+
+      <!-- NEWS2 trend -->
+      <div class="chart-card">
+        <div class="chart-title">NEWS2 Score History</div>
+        <canvas id="news2TrendChart" height="100"></canvas>
+      </div>
+
+      <!-- Population Stats Card -->
+      <div class="population-stats-card">
+        <div class="ps-header">📊 SESSION STATISTICS</div>
+        <div class="ps-grid" id="sessionStats">
+          <div class="ps-item"><span class="ps-lbl">Scans Completed</span><span class="ps-val" id="statScans">0</span></div>
+          <div class="ps-item"><span class="ps-lbl">Avg Heart Rate</span><span class="ps-val" id="statAvgHr">--</span></div>
+          <div class="ps-item"><span class="ps-lbl">Avg HRV</span><span class="ps-val" id="statAvgHrv">--</span></div>
+          <div class="ps-item"><span class="ps-lbl">Avg Hemoglobin</span><span class="ps-val" id="statAvgHb">--</span></div>
+          <div class="ps-item"><span class="ps-lbl">Peak NEWS2</span><span class="ps-val" id="statPeakNews2">--</span></div>
+          <div class="ps-item"><span class="ps-lbl">AFib Events</span><span class="ps-val" id="statAfib">0</span></div>
+        </div>
+      </div>
+
+      <!-- MARKET OPPORTUNITY / FUNDING PANEL -->
+      <div class="funding-card">
+        <div class="fc-header">💰 INVESTOR & FUNDING INTELLIGENCE</div>
+        <div class="fc-body">
+          <div class="fc-stat"><span class="fcs-num">$7.4B</span><span class="fcs-lbl">US Digital Health VC (H1 2026)</span></div>
+          <div class="fc-stat"><span class="fcs-num">$170–260</span><span class="fcs-lbl">Per-patient/month Medicare RPM Revenue</span></div>
+          <div class="fc-stat"><span class="fcs-num">30.7%</span><span class="fcs-lbl">Women globally affected by anemia (WHO 2025)</span></div>
+          <div class="fc-stat"><span class="fcs-num">2Bn+</span><span class="fcs-lbl">Global anemia sufferers addressable</span></div>
+          <div class="fc-stat"><span class="fcs-num">FDA SaMD</span><span class="fcs-lbl">De Novo / 510(k) Pathway Ready</span></div>
+          <div class="fc-stat"><span class="fcs-num">CPT 99454</span><span class="fcs-lbl">$52.11/month device supply billing</span></div>
+        </div>
+        <div class="fc-footer">OmniTriage Pro targets: Hospital Enterprise SaaS • Insurance RPM • WHO/UNICEF Global Health • Community Health Workers</div>
+      </div>
+    </section>
+
+    <!-- =========================================== -->
+    <!-- TAB 5: HISTORY, PDF & FHIR EXPORT           -->
+    <!-- =========================================== -->
     <section id="tab-report" class="tab-pane">
-      <div class="report-container">
-        <!-- PDF Export Hero -->
-        <div class="report-hero">
-          <div class="report-icon">📄</div>
-          <h2>Hospital Diagnostic Report</h2>
-          <p>Export a formal, printable PDF document formatted to HL7 FHIR v4 and ISO standards for any doctor or clinic worldwide.</p>
-          <button id="exportPdfBtn" class="btn-download-pdf">
-            <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>
-            </svg>
-            DOWNLOAD CLINICAL PDF REPORT
-          </button>
-        </div>
 
-        <!-- Saved Encrypted Encounters Database -->
-        <div class="history-card">
-          <div class="history-header">
-            <span>🗂️ ENCRYPTED CLINICAL ENCOUNTERS DATABASE</span>
-            <span class="vault-tag">AES-256 VAULT</span>
-          </div>
-          <div id="historyList" class="history-list">
-            <div class="empty-history">No saved scans yet. Complete a 30-second camera scan to save your first encounter to the encrypted vault.</div>
-          </div>
-        </div>
-
-        <!-- FHIR JSON View -->
-        <div class="fhir-box">
-          <div class="fhir-title">HL7 FHIR v4 Observation Bundle (LOINC Coded):</div>
-          <pre id="fhirJsonPreview" class="fhir-code">{ "resourceType": "Bundle", "type": "collection" }</pre>
+      <!-- PDF Report Controls -->
+      <div class="report-header-card">
+        <div class="rh-title">📄 CLINICAL REPORT GENERATION</div>
+        <div class="rh-subtitle">ISO 80601-2-61 · HL7 FHIR R4 · LOINC-coded</div>
+        <div class="report-btn-row">
+          <button id="exportPdfBtn" class="btn-pdf">⬇ EXPORT PDF REPORT</button>
+          <button id="exportFhirBtn" class="btn-fhir">⚕ EXPORT HL7 FHIR JSON</button>
+          <button id="clearHistoryBtn" class="btn-clear">🗑 CLEAR HISTORY</button>
         </div>
       </div>
-    </section>
 
+      <!-- Compliance Standards Display -->
+      <div class="compliance-card">
+        <div class="comp-title">🏛 COMPLIANCE & REGULATORY STANDARDS</div>
+        <div class="comp-grid">
+          <div class="comp-item">✅ ISO 80601-2-61 Pulse Oximetry</div>
+          <div class="comp-item">✅ HL7 FHIR R4 Interoperability</div>
+          <div class="comp-item">✅ LOINC Terminology Coding</div>
+          <div class="comp-item">✅ SNOMED-CT ICD-11 Mapping</div>
+          <div class="comp-item">✅ NEWS2 (RCP/NHS England)</div>
+          <div class="comp-item">✅ WHO 2024 Anemia Guidelines</div>
+          <div class="comp-item">✅ Sepsis-3 / SSC 2026</div>
+          <div class="comp-item">✅ AHA/ACC 2024 Cardiac</div>
+          <div class="comp-item">✅ AES-256 Encrypted Storage</div>
+          <div class="comp-item">✅ GDPR / HIPAA Aligned</div>
+          <div class="comp-item">🔄 FDA SaMD Pathway (In Progress)</div>
+          <div class="comp-item">🔄 CE Mark MDR 2017/745</div>
+        </div>
+      </div>
+
+      <!-- Encrypted Encounter History -->
+      <div class="history-section">
+        <div class="history-header">
+          <span class="history-title">🗂 ENCRYPTED CLINICAL ENCOUNTER DATABASE</span>
+          <span class="history-count" id="historyCount">0 records</span>
+        </div>
+        <div id="historyList" class="history-list">
+          <div class="empty-history">No saved encounters yet. Complete a scan to begin building your clinical history.</div>
+        </div>
+      </div>
+
+      <!-- FHIR Export Preview -->
+      <div class="fhir-preview-card" id="fhirPreviewCard" style="display:none;">
+        <div class="fp-title">⚕ HL7 FHIR R4 BUNDLE PREVIEW</div>
+        <pre class="fp-json" id="fhirJsonPreview"></pre>
+      </div>
+    </section>
   </main>
 
+  <!-- Scripts -->
   <script src="sensor-bridge.js"></script>
   <script src="app.js"></script>
 </body>
