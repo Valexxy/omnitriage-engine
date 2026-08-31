@@ -123,56 +123,56 @@
     <!-- ========================================== -->
     <section id="tab-vitals" class="tab-pane">
       <div class="vitals-mobile-stack">
-        <!-- Heart Rate Card -->
+        <!-- 1. Heart Rate / Pulse Card -->
         <div class="metric-card card-emerald">
           <div class="metric-top">
-            <span class="metric-title">HEART RATE</span>
-            <span class="metric-tag">ANSI/AAMI EC13</span>
+            <span class="metric-title">🫀 PULSE (HEART RATE)</span>
+            <span class="metric-tag">LOINC 8867-4</span>
           </div>
           <div class="metric-middle">
-            <span id="valHeartRate" class="metric-giant">72</span>
+            <span id="valHeartRate" class="metric-giant">74</span>
             <span class="metric-unit">BPM</span>
           </div>
-          <div class="metric-bottom">Resting pulse within normal physiological range (60-100 BPM).</div>
+          <div class="metric-bottom">Resting cardiac rhythm is steady and optimal (Normal: 60-100 BPM).</div>
         </div>
 
-        <!-- HRV Stress Card -->
+        <!-- 2. HRV Vagal Stress Buffer Card -->
         <div class="metric-card card-cyan">
           <div class="metric-top">
-            <span class="metric-title">HEART RATE VARIABILITY (RMSSD)</span>
-            <span class="metric-tag">AUTONOMIC TONE</span>
+            <span class="metric-title">🧠 STRESS & RECOVERY (HRV RMSSD)</span>
+            <span class="metric-tag">LOINC 80404-7</span>
           </div>
           <div class="metric-middle">
-            <span id="valRmssd" class="metric-giant">48.2</span>
+            <span id="valRmssd" class="metric-giant">51.2</span>
             <span class="metric-unit">ms</span>
           </div>
-          <div class="metric-bottom">High parasympathetic vagal buffer. Low biological stress index.</div>
+          <div class="metric-bottom">High parasympathetic vagal tone (51.2 ms) indicating excellent biological recovery.</div>
         </div>
 
-        <!-- Vascular Age Card -->
+        <!-- 3. Vascular Age Card -->
         <div class="metric-card card-amber">
           <div class="metric-top">
-            <span class="metric-title">VASCULAR BIOLOGICAL AGE</span>
-            <span class="metric-tag" id="valBaRatio">APG b/a: -1.04</span>
+            <span class="metric-title">🫁 VASCULAR BIOLOGICAL AGE</span>
+            <span class="metric-tag" id="valBaRatio">APG b/a: -1.06</span>
           </div>
           <div class="metric-middle">
-            <span id="valVascularAge" class="metric-giant">31</span>
+            <span id="valVascularAge" class="metric-giant">29</span>
             <span class="metric-unit">YEARS</span>
           </div>
-          <div class="metric-bottom">Arterial elasticity indicates flexible, youthful vascular walls.</div>
+          <div class="metric-bottom">Arterial wall compliance indicates flexible, youthful vascular elasticity.</div>
         </div>
 
-        <!-- Hemoglobin Anemia Card -->
+        <!-- 4. Hemoglobin Card -->
         <div class="metric-card card-emerald">
           <div class="metric-top">
-            <span class="metric-title">HEMOGLOBIN (NEEDLE-FREE)</span>
+            <span class="metric-title">🩸 HEMOGLOBIN OXYGENATION (Hb)</span>
             <span class="metric-tag" id="valAnemiaSeverity">NORMAL</span>
           </div>
           <div class="metric-middle">
-            <span id="valHemoglobin" class="metric-giant">14.1</span>
+            <span id="valHemoglobin" class="metric-giant">14.0</span>
             <span class="metric-unit">g/dL</span>
           </div>
-          <div class="metric-bottom">Spectrophotometric index shows optimal blood oxygenation.</div>
+          <div class="metric-bottom">Spectrophotometric blood oxygen capacity is optimal (Normal: 13.0 - 17.5 g/dL).</div>
         </div>
       </div>
     </section>
@@ -191,7 +191,7 @@
           <div class="risk-bar-track">
             <div id="barNews2" class="risk-bar-fill bar-emerald" style="width: 5%;"></div>
           </div>
-          <p id="descNews2" class="risk-explanation">Vital parameters stable. Routine 12-hour monitoring recommended.</p>
+          <p id="descNews2" class="risk-explanation">Score 0 (Low Risk): All physiological parameters within normal baseline. Routine monitoring.</p>
         </div>
 
         <!-- qSOFA Sepsis -->
