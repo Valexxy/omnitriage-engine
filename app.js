@@ -134,24 +134,28 @@ function drawScope() {
   frameId = requestAnimationFrame(drawScope);
 }
 
-// ─── ALGORITHM SELECTOR ──────────────────────────────────────────────────────
+// ─── ALGORITHM & SENSORY MODALITY SELECTOR ──────────────────────────────────
 function setAlgorithm(algo) {
   algorithm = algo;
-  document.querySelectorAll('.algo-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById(`algo${algo.charAt(0)+algo.slice(1).toLowerCase()}`)?.classList.add('active');
-  const badge = document.getElementById('algoBadge');
-  if (badge) badge.textContent = algo;
-}
-// Fix: match IDs
-window.setAlgorithm = function(a) {
-  algorithm = a;
-  ['CHROM','POS','PPG'].forEach(n => {
+  ['CHROM','POS','FACE','SCG','PPG'].forEach(n => {
     const b = document.getElementById(`algo${n.charAt(0)+n.slice(1).toLowerCase()}`);
-    if (b) b.classList.toggle('active', n === a);
+    if (b) b.classList.toggle('active', n === algo);
   });
   const badge = document.getElementById('algoBadge');
-  if (badge) badge.textContent = a;
-};
+  if (badge) badge.textContent = algo;
+
+  if (algo === 'FACE') {
+    setStatus('READY: CONTACTLESS FACIAL rPPG');
+    setGuid('info', 'Contactless Mode', 'Hold phone 0.5m in front of face. The front camera will extract micro-facial pulse reflections without touching any lens.');
+  } else if (algo === 'SCG') {
+    setStatus('READY: STERNAL SEISMOCARDIOGRAPHY');
+    setGuid('info', 'Sternal Placement', 'Rest phone flat on center of chest / sternum while lying back. Internal 6-axis IMU records micro-valve closures and stroke volume.');
+  } else {
+    setStatus('READY TO SCAN');
+    setGuid('info', 'Fingertip Placement', 'Cover rear camera lens with index finger, thumb, or palm base.');
+  }
+}
+window.setAlgorithm = setAlgorithm;
 
 // ─── WAKE LOCK ────────────────────────────────────────────────────────────────
 async function initWakeLock() {

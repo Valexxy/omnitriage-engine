@@ -78,17 +78,25 @@
     <!-- ═══════════════════════════════════════════════════════ -->
     <section id="tab-scan" class="tab-pane active">
 
-      <!-- Algorithm Selector -->
+      <!-- Algorithm & Sensor Modality Selector -->
       <div class="algo-selector">
-        <div class="algo-label">SIGNAL EXTRACTION ALGORITHM</div>
-        <div class="algo-btns">
+        <div class="algo-label">ZERO-HARDWARE SENSING MODALITY (MILITARY / DUAL-USE GRADE)</div>
+        <div class="algo-btns" style="display:grid;grid-template-columns:repeat(5,1fr);gap:4px;">
           <button class="algo-btn active" id="algoChrom" onclick="setAlgorithm('CHROM')">
             <span class="algo-name">CHROM</span>
-            <span class="algo-desc">de Haan 2013</span>
+            <span class="algo-desc">Fingertip PPG</span>
           </button>
           <button class="algo-btn" id="algoPos" onclick="setAlgorithm('POS')">
             <span class="algo-name">POS</span>
             <span class="algo-desc">Wang 2016</span>
+          </button>
+          <button class="algo-btn" id="algoFace" onclick="setAlgorithm('FACE')">
+            <span class="algo-name">👤 FACE</span>
+            <span class="algo-desc">Contactless rPPG</span>
+          </button>
+          <button class="algo-btn" id="algoScg" onclick="setAlgorithm('SCG')">
+            <span class="algo-name">🫀 STERNUM</span>
+            <span class="algo-desc">IMU Shock Triage</span>
           </button>
           <button class="algo-btn" id="algoPpg" onclick="setAlgorithm('PPG')">
             <span class="algo-name">GREEN</span>
