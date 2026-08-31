@@ -27,18 +27,38 @@ class SmartphoneSensorBridge {
 
   async startCamera(onFrameCallback, facing = 'environment') {
     this.onFrame = onFrameCallback;
-    try {
-      const constraints = {
-        video: {
-          facingMode: { ideal: facing },
-          width: { ideal: 320, max: 640 },
-          height: { ideal: 240, max: 480 },
-          frameRate: { ideal: 30, min: 24 }
-        },
-        audio: false
-      };
+    this.stopAll(); // Ensure any previous stream is terminated before opening new camera
 
-      this.stream = await navigator.mediaDevices.getUserMedia(constraints);
+    // Progressive constraint fallback list:
+    // 1. Exact facingMode with ideal frameRate
+    // 2. Ideal facingMode with flexible resolution
+    // 3. Any available video track (universal fallback)
+    const constraintAttempts = [
+      { video: { facingMode: { exact: facing }, width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 30, min: 20 } }, audio: false },
+      { video: { facingMode: { ideal: facing }, width: { ideal: 320, max: 640 }, height: { ideal: 240, max: 480 } }, audio: false },
+      { video: { facingMode: facing }, audio: false },
+      { video: true, audio: false }
+    ];
+
+    let stream = null;
+    let lastErr = null;
+
+    for (const c of constraintAttempts) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(c);
+        if (stream) break;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+
+    if (!stream) {
+      console.warn('[SensorBridge] All camera constraint attempts failed:', lastErr);
+      return { success: false, error: lastErr?.message || 'Unable to access camera', torchActive: false };
+    }
+
+    try {
+      this.stream = stream;
       this.videoElement.srcObject = this.stream;
       await this.videoElement.play();
 
@@ -69,7 +89,7 @@ class SmartphoneSensorBridge {
         cameraName: track ? track.label : (facing === 'user' ? 'Front Camera' : 'Rear Camera')
       };
     } catch (err) {
-      console.warn('[SensorBridge] Camera initialization error:', err);
+      console.warn('[SensorBridge] Video play error:', err);
       return { success: false, error: err.message, torchActive: false };
     }
   }

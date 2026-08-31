@@ -223,28 +223,33 @@ async function startScan() {
       // 👤 Contactless Facial rPPG (Front-Facing Camera)
       const cam = await window.SensorBridge.startCamera(onFrame, 'user');
       if (!cam?.success) {
-        setStatus('⚠ FRONT CAMERA ERROR'); setGuid('error','Camera Access','Allow front camera permission for Contactless Facial rPPG.'); abort(); return;
+        setStatus('⚠ FRONT CAMERA ERROR');
+        setGuid('error','Camera Access',`Unable to start front camera (${cam?.error || 'permission denied'}). Try refreshing or allow camera in browser.`);
+        abortScan();
+        return;
       }
       setPill('👤 FACE rPPG ACTIVE', '#3b82f6');
       setStatus('FACE POSITION LOCKED: TRACKING');
-      setGuid('info','Hold Steady','Hold phone steady facing your forehead & cheeks. Micro-vascular color pulses are streaming.');
+      setGuid('info','Hold Steady','Hold phone 0.5m in front of face. Capillary color pulsations from forehead & cheeks are streaming.');
     } else if (algorithm === 'SCG') {
       // 🫀 Sternal Seismocardiography (6-Axis IMU on Chest)
       window.SensorBridge.startImu((imu) => {
-        // Feed Z-axis acceleration and Y-axis rotation into waveform oscilloscope
         const cardiacMicroImpulse = (imu.az - 9.8) * 15 + imu.gy * 2;
         scopeWave.push(cardiacMicroImpulse);
         if (scopeWave.length > SCOPE_POINTS) scopeWave.shift();
         fingerOn = true;
       });
-      setPill('🫀 STERMAL IMU ACTIVE', '#ec4899');
+      setPill('🫀 STERNAL IMU ACTIVE', '#ec4899');
       setStatus('RECORDING MYOCARDIAL KINETICS');
-      setGuid('info','Sternal Contact','Keep phone resting flat on center of sternum. Capturing Aortic Valve Opening & Stroke Volume.');
+      setGuid('info','Sternal Contact','Rest phone flat on center of chest. Capturing Aortic Valve Opening & Stroke Volume.');
     } else {
       // 👆 Contact Fingertip / Thumb Transillumination (Rear Camera + Torch)
       const cam = await window.SensorBridge.startCamera(onFrame, 'environment');
       if (!cam?.success) {
-        setStatus('⚠ CAMERA ERROR'); setGuid('error','Camera Permission','Allow rear camera access in browser settings.'); abort(); return;
+        setStatus('⚠ CAMERA ERROR');
+        setGuid('error','Camera Permission',`Unable to start rear camera (${cam?.error || 'permission denied'}). Allow camera in settings.`);
+        abortScan();
+        return;
       }
       setPill(cam.torchActive ? '🔦 TORCH: ACTIVE' : '📱 CAMERA ON', cam.torchActive ? '#10b981' : '#06b6d4');
       setStatus('AWAITING CONTACT...');
