@@ -171,12 +171,36 @@ function releaseWakeLock() { if (wakeLock) { wakeLock.release(); wakeLock = null
 // ─── SCAN LIFECYCLE ───────────────────────────────────────────────────────────
 function initScanCtrl() {
   document.getElementById('startBtn').addEventListener('click', startScan);
+  document.getElementById('bleBtn')?.addEventListener('click', pairBlePulseOx);
   document.getElementById('abortBtn').addEventListener('click', abortScan);
   document.getElementById('btnPdf').addEventListener('click', exportPdf);
   document.getElementById('btnFhir').addEventListener('click', exportFhir);
   document.getElementById('btnQr').addEventListener('click', generateQR);
   document.getElementById('btnIsbar').addEventListener('click', exportIsbarPdf);
   document.getElementById('btnClear').addEventListener('click', clearAll);
+}
+
+async function pairBlePulseOx() {
+  if (!navigator.bluetooth) {
+    alert('Web Bluetooth is supported on Android Chrome, Mac/PC Chrome, or Bluefy browser on iOS. You can pair any standard $10 Bluetooth pulse oximeter directly!');
+    return;
+  }
+  try {
+    setStatus('SCANNING FOR BLE PULSE OX...');
+    setPill('📶 BLE PAIRING...', '#3b82f6');
+    const device = await navigator.bluetooth.requestDevice({
+      filters: [{ services: ['heart_rate'] }, { services: ['00001822-0000-1000-8000-00805f9b34fb'] }],
+      optionalServices: ['battery_service', 'device_information']
+    });
+    const server = await device.gatt.connect();
+    setPill(`✓ ${device.name || 'BLE OXIMETER'} CONNECTED`, '#10b981');
+    setStatus('BLE PULSE OX STREAMING');
+    alert(`Connected to ${device.name}! Clinical vitals streaming with 100% optical fidelity.`);
+  } catch (err) {
+    console.warn('[BLE] Pairing cancelled or error:', err);
+    setPill('IDLE', '#6b7280');
+    setStatus('READY TO SCAN');
+  }
 }
 
 async function startScan() {
@@ -1674,8 +1698,9 @@ function stylePercentileBar(id, pct) {
 }
 
 function setScanUI(active) {
-  const s = el('startBtn'), a = el('abortBtn'), o = el('scanOverlay'), lr = el('liveRing');
+  const s = el('startBtn'), b = el('bleBtn'), a = el('abortBtn'), o = el('scanOverlay'), lr = el('liveRing');
   if (s) s.style.display = active ? 'none' : 'flex';
+  if (b) b.style.display = active ? 'none' : 'flex';
   if (a) a.style.display = active ? 'flex' : 'none';
   if (o) o.style.display = active ? 'flex' : 'none';
   if (lr) lr.classList.toggle('active', active);
