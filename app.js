@@ -229,9 +229,11 @@ function onFrame(frame) {
   const { r, g, b, timestamp: ts } = frame;
 
   // ─ Transillumination color & absorption gate ─
-  const isColorLiving = r >= 80 && (r / (g + 1)) >= 1.18 && (r / (b + 1)) >= 1.28;
-  const isSaturated = r > 251 && g < 28 && b < 28;
-  const isAmbient = r > 115 && g > 90 && b > 70;
+  // iOS Safari / WebKit does not expose the hardware torch API to web browsers.
+  // We accommodate both bright flash transillumination and ambient/daylight illumination:
+  const isColorLiving = (r >= 55 && (r / (g + 1)) >= 1.12 && (r / (b + 1)) >= 1.18) || (r >= 45 && r > g && r > b && (r - g) > 8);
+  const isSaturated = r > 252 && g < 20 && b < 20;
+  const isAmbient = r > 140 && g > 120 && b > 105;
 
   // Check dynamic capillary AC pulsatility across recent frames (living tissue has micro-oscillations)
   let isPulsatile = true;
