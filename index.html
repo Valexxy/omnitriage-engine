@@ -10,11 +10,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="styles.css">
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
-  <!-- jsPDF for Instant Clinical PDF Report Generation -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body class="medical-theme">
-  <!-- Ambient Glow Effects -->
   <div class="ambient-glow glow-emerald"></div>
   <div class="ambient-glow glow-cyan"></div>
 
@@ -32,28 +30,43 @@
     </div>
 
     <div class="header-right">
-      <span class="compliance-pill">ISO 80601-2-61 COMPLIANT</span>
+      <span class="compliance-pill">ISO 80601-2-61</span>
       <span class="compliance-pill fhir-pill">HL7 FHIR v4</span>
       <button id="pwaInstallBtn" class="btn-install" style="display:none;">INSTALL APP</button>
     </div>
   </header>
 
   <main class="dashboard-grid">
-    <!-- LEFT PANEL: REAL-TIME SENSORS & OSCILLOSCOPE -->
+    <!-- LEFT PANEL: REAL-TIME SENSORS & AUTOMATED OSCILLOSCOPE -->
     <section class="panel panel-telemetry">
       <div class="panel-header">
         <h2>OPTICAL PHOTOPLETHYSMOGRAM (PPG) OSCILLOSCOPE</h2>
         <div class="status-indicator">
-          <span class="live-dot"></span>
-          <span id="sensorStatusText">STANDBY</span>
+          <span id="livePulseDot" class="live-dot"></span>
+          <span id="sensorStatusText">READY TO SCAN</span>
         </div>
       </div>
 
-      <!-- Live Oscilloscope Canvas -->
+      <!-- Live Oscilloscope Canvas with Integrated 30-Second Countdown Dial -->
       <div class="oscilloscope-container">
         <canvas id="ppgCanvas" width="700" height="240"></canvas>
         
-        <!-- Live HUD Overlay -->
+        <!-- Live Countdown Overlay (Active during scanning) -->
+        <div id="scanTimerOverlay" class="scan-timer-overlay" style="display:none;">
+          <div class="timer-circle-container">
+            <svg class="timer-svg" viewBox="0 0 100 100">
+              <circle class="timer-track" cx="50" cy="50" r="42"/>
+              <circle id="timerProgressCircle" class="timer-bar" cx="50" cy="50" r="42"/>
+            </svg>
+            <div class="timer-text-box">
+              <span id="scanSecondsRemaining" class="timer-sec">30</span>
+              <span class="timer-unit">SEC</span>
+            </div>
+          </div>
+          <div id="scanPhaseText" class="scan-phase-text">INITIALIZING OPTICAL SENSORS...</div>
+        </div>
+
+        <!-- Live HUD Telemetry Values -->
         <div class="hud-overlay">
           <div class="hud-item">
             <span class="hud-label">SIGNAL QUALITY (SQI)</span>
@@ -74,33 +87,31 @@
         </div>
       </div>
 
-      <!-- Live Scan Controls -->
+      <!-- Automated Camera Action Controls -->
       <div class="camera-control-bar">
         <button id="startScanBtn" class="btn btn-primary glow-button">
           <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/>
           </svg>
-          START CAMERA SCAN (TORCH)
+          START 30S CLINICAL SCAN (AUTO-TIMED)
         </button>
-        <button id="stopScanBtn" class="btn btn-danger" style="display:none;">STOP SCAN</button>
-        <button id="recordAudioBtn" class="btn btn-secondary">
+        <button id="abortScanBtn" class="btn btn-danger" style="display:none;">
           <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
-          BIOACOUSTIC LUNG SCAN
+          CANCEL SCAN
         </button>
       </div>
 
-      <!-- Scan Progress & Guidance -->
+      <!-- Real-time Clinical Guidance & Audio Feedback -->
       <div id="guidanceBox" class="guidance-box">
-        <div class="guidance-icon">💡</div>
+        <div id="guidanceIcon" class="guidance-icon">💡</div>
         <div id="guidanceText" class="guidance-text">
-          Gently cover the rear camera lens & LED flashlight with your index finger. Do not press hard.
+          Gently cover the rear camera lens & LED flashlight with your index finger. The 30-second acquisition cycle will start and stop automatically.
         </div>
       </div>
 
-      <!-- Presets for Immediate Triage Simulation -->
+      <!-- Presets for Immediate Triage Benchmarking -->
       <div class="preset-section">
         <span class="preset-title">INSTANT CLINICAL SCENARIO BENCHMARKS:</span>
         <div class="preset-buttons">
@@ -167,7 +178,6 @@
 
       <!-- Multi-Triage Risk Scores -->
       <div class="triage-cards-grid">
-        <!-- NEWS2 Score -->
         <div class="triage-card">
           <div class="triage-card-header">
             <span class="triage-title">NEWS2 EARLY WARNING</span>
@@ -181,7 +191,6 @@
           </div>
         </div>
 
-        <!-- qSOFA Sepsis -->
         <div class="triage-card">
           <div class="triage-card-header">
             <span class="triage-title">qSOFA SEPSIS RISK</span>
@@ -195,7 +204,6 @@
           </div>
         </div>
 
-        <!-- 4-6h Predictive Decompensation -->
         <div class="triage-card">
           <div class="triage-card-header">
             <span class="triage-title">4-6H DECOMPENSATION FORECAST</span>
@@ -237,7 +245,7 @@
 
   <footer class="app-footer">
     <div class="footer-left">
-      <span>OmniTriage Engine v2.0 • Software as a Medical Device (SaMD) Architecture</span>
+      <span>OmniTriage Engine v2.0 • Zero-Hardware Medical SaMD Platform</span>
     </div>
     <div class="footer-right">
       <span>Active Gateway: <strong class="text-emerald">HAPI FHIR baseR4</strong></span>
