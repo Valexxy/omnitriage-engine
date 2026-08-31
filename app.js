@@ -229,23 +229,24 @@ function onFrame(frame) {
   const { r, g, b, timestamp: ts } = frame;
 
   // ─ Transillumination color & absorption gate ─
-  // Capillary blood strongly absorbs green/blue and passes red.
-  // In low ambient light (no torch), R can be ~30-40 while G/B are 10-20.
-  // When finger covers lens, R is dominant: R > G and R > B.
-  const isRedDominant = (r > g + 2) && (r > b + 2);
-  const isColorLiving = (r >= 30 && isRedDominant && (r / (g + 1)) >= 1.08) || (r >= 25 && (r - g) >= 5 && (r - b) >= 5);
-  const isSaturated = r > 252 && g < 18 && b < 18;
-  const isAmbient = r > 160 && g > 140 && b > 120;
+  // Capillary blood in the thumb, index finger, or thenar eminence (palm base)
+  // absorbs green/blue light and passes red. 
+  // R is dominant: R > G and R > B, or overall optical absorption profile.
+  const isRedDominant = (r >= g) && (r >= b);
+  const isColorLiving = (r >= 20 && isRedDominant) || (r >= 25 && (r - g) >= 2);
+  const isSaturated = r > 253 && g < 15 && b < 15;
+  const isAmbient = r > 175 && g > 155 && b > 140;
 
   // Real-time RGB diagnostic display on status bar so user sees exactly what the sensor is receiving
   const rgbReadout = `R:${Math.round(r)} G:${Math.round(g)} B:${Math.round(b)}`;
 
-  // Check dynamic capillary AC pulsatility across recent frames (living tissue has micro-oscillations)
+  // Capillary pulsatility check: only evaluate once at least 50 frames have accumulated
+  // To avoid false "static surface" vetoes during the first 1-2 seconds of touch
   let isPulsatile = true;
-  if (gBuf.length >= 35) {
-    const recentG = gBuf.slice(-35);
+  if (gBuf.length >= 60) {
+    const recentG = gBuf.slice(-45);
     const gVar = variance(recentG);
-    if (gVar < 0.015) isPulsatile = false;
+    if (gVar < 0.005) isPulsatile = false;
   }
 
   const isLiving = isColorLiving && isPulsatile;
@@ -253,29 +254,26 @@ function onFrame(frame) {
 
   if (!isColorLiving) {
     fingerOn = false;
-    if (r < 25 && g < 25 && b < 25) {
+    if (r < 18 && g < 18 && b < 18) {
       setPill(`⚠️ TOO DARK (${rgbReadout})`, '#f43f5e');
-      setGuid('error','No Light Detected',`Sensor sees near total darkness (${rgbReadout}). Turn on phone flashlight or shine a light on your fingertip.`);
+      setGuid('error','No Light Detected',`Camera sees darkness (${rgbReadout}). Turn on phone flashlight or illuminate your hand/thumb under a light.`);
       haptic([100]);
     } else if (isAmbient) {
       setPill(`⚠️ WHITE LIGHT (${rgbReadout})`, '#f59e0b');
-      setGuid('warn','Light Leak Detected',`Direct room light hitting lens (${rgbReadout}). Cover camera lens completely with finger pad.`);
+      setGuid('warn','Light Leak Detected',`Room light leaking into lens (${rgbReadout}). Cover camera lens completely with thumb, palm base, or fingers.`);
     } else {
       setPill(`⚠️ REPOSITION (${rgbReadout})`, '#f59e0b');
-      setGuid('warn','Adjust Placement',`Camera sees ${rgbReadout}. Move fingertip to the main lens until red blood glow is detected.`);
+      setGuid('warn','Adjust Placement',`Camera sees ${rgbReadout}. Shift thumb or palm slightly until the camera is fully covered.`);
     }
     scopeWave.push(0);
     if (scopeWave.length > SCOPE_POINTS) scopeWave.shift();
     return;
   }
 
-  if (!isPulsatile) {
-    fingerOn = false;
-    setPill('⚠️ STATIC SURFACE', '#f59e0b');
-    setGuid('warn','Non-Pulsatile Surface','No capillary blood pulsation detected. Ensure you are placing a living finger, not a static object.');
-    scopeWave.push(0);
-    if (scopeWave.length > SCOPE_POINTS) scopeWave.shift();
-    return;
+  if (!isPulsatile && gBuf.length >= 75) {
+    // Only warn if persistently flat after 75 frames (~2.5s)
+    setPill(`⚠️ WEAK PULSE (${rgbReadout})`, '#f59e0b');
+    setGuid('warn','Lighten Pressure',`Capillary blood flow restricted. Soften your touch so blood can pulsate through.`);
   }
 
   if (isSaturated) {
